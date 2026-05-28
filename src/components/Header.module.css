@@ -1,0 +1,273 @@
+.nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.85rem 2rem;
+  background: var(--nav-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  border-bottom: 1px solid var(--border-color);
+  flex-wrap: wrap;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--foreground);
+  letter-spacing: -0.025em;
+  text-decoration: none;
+}
+
+.logoIcon {
+  color: var(--primary);
+  width: 24px;
+  height: 24px;
+}
+
+/* ── Desktop nav links (center) ── */
+.desktopLinks {
+  display: flex;
+  gap: 1.75rem;
+  align-items: center;
+}
+
+.navLink {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.navLink:hover {
+  color: var(--primary);
+}
+
+/* ── Desktop right actions ── */
+.desktopRight {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.iconBtn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  font-size: 1rem;
+}
+
+.iconBtn:hover {
+  background: var(--hover-bg);
+  color: var(--primary);
+}
+
+.badge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  background: #ef4444;
+  color: white;
+  font-size: 0.6rem;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}
+
+.notificationWrapper {
+  position: relative;
+}
+
+.notificationMenu {
+  position: absolute;
+  top: 42px;
+  right: 0;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  color: var(--foreground);
+  padding: 0.5rem;
+  border-radius: 0.75rem;
+  z-index: 100;
+  min-width: 220px;
+  box-shadow: var(--shadow-lg);
+}
+
+.notificationMenu p {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: background 0.15s ease;
+}
+
+.notificationMenu p:hover {
+  background: var(--hover-bg);
+}
+
+.btnPrimary, .btnOutline {
+  padding: 0.45rem 1rem;
+  border-radius: 9999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+
+.btnPrimary {
+  background: var(--primary);
+  color: white;
+  border: none;
+}
+
+.btnPrimary:hover {
+  background: var(--primary-hover);
+}
+
+.btnOutline {
+  background: transparent;
+  color: var(--foreground);
+  border: 1px solid var(--border-color);
+}
+
+.btnOutline:hover {
+  background: var(--hover-bg);
+  border-color: var(--border-hover);
+}
+
+/* ── Hamburger button — hidden on desktop ── */
+.hamburger {
+  display: none;
+  background: transparent;
+  border: none;
+  color: var(--foreground);
+  cursor: pointer;
+  padding: 0.4rem;
+  border-radius: 0.5rem;
+}
+
+.hamburger:hover {
+  background: var(--hover-bg);
+}
+
+/* ── Mobile dropdown menu ── */
+.mobileMenu {
+  display: none;
+  width: 100%;
+  flex-direction: column;
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--border-color);
+  margin-top: 0.75rem;
+}
+
+.mobileLink {
+  display: block;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--foreground);
+  background: none;
+  border: none;
+  text-align: left;
+  text-decoration: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.mobileLink:hover {
+  background: var(--hover-bg);
+}
+
+.mobileLinkPrimary {
+  composes: mobileLink;
+  color: white;
+  background: var(--primary);
+  text-align: center;
+  font-weight: 600;
+  margin-top: 0.25rem;
+}
+
+.mobileLinkPrimary:hover {
+  background: var(--primary-hover);
+}
+
+.mobileLinkDanger {
+  composes: mobileLink;
+  color: #ef4444;
+}
+
+.mobileLinkDanger:hover {
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.mobileDivider {
+  height: 1px;
+  background: var(--border-color);
+  margin: 0.5rem 0;
+}
+
+.notificationInline {
+  padding: 0.25rem 0 0.25rem 1rem;
+}
+
+.notificationInline p {
+  margin: 0;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.notificationInline p:hover {
+  background: var(--hover-bg);
+}
+
+/* ── Mobile breakpoint ── */
+@media (max-width: 768px) {
+  .nav {
+    padding: 0.75rem 1rem;
+  }
+
+  .desktopLinks,
+  .desktopRight {
+    display: none;
+  }
+
+  .hamburger {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .mobileMenu {
+    display: flex;
+  }
+}

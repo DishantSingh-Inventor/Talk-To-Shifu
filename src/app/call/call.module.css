@@ -1,0 +1,252 @@
+.container {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), sans-serif;
+  overflow: hidden;
+}
+
+.videoGrid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+@media (max-width: 768px) {
+  .videoGrid {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 1fr;
+  }
+}
+
+.videoContainer {
+  position: relative;
+  background: var(--card-hover);
+  border-radius: 1.5rem;
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+  border: 1px solid var(--card-hover);
+}
+
+.video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.videoLabel {
+  position: absolute;
+  bottom: 1rem;
+  left: 1rem;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  backdrop-filter: blur(4px);
+}
+
+.placeholderVideo {
+  color: var(--text-muted);
+  text-align: center;
+  padding: 2rem;
+  animation: pulse 2s infinite;
+}
+
+.controls {
+  padding: 1.5rem;
+  background: rgba(15, 23, 42, 0.9);
+  backdrop-filter: blur(12px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+  border-top: 1px solid var(--card-hover);
+}
+
+.controlBtn, .controlBtnAction, .controlBtnSkip, .controlBtnEnd {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: var(--foreground);
+}
+
+.controlBtn {
+  width: 56px;
+  height: 56px;
+  background: var(--border-color);
+}
+
+.controlBtn:hover {
+  background: var(--border-color);
+  transform: scale(1.05);
+}
+
+.controlBtnAction {
+  width: 56px;
+  height: 56px;
+  background: rgba(59, 130, 246, 0.2);
+  color: var(--primary);
+}
+
+.controlBtnAction:hover {
+  background: rgba(59, 130, 246, 0.4);
+  transform: scale(1.05);
+}
+
+.controlBtnSkip {
+  padding: 0 1.5rem;
+  height: 56px;
+  border-radius: 9999px;
+  background: #f59e0b;
+  font-weight: 600;
+  gap: 0.5rem;
+  font-family: inherit;
+}
+
+.controlBtnSkip:hover {
+  background: #d97706;
+  transform: scale(1.05);
+}
+
+.controlBtnEnd {
+  width: 56px;
+  height: 56px;
+  background: #ef4444;
+}
+
+.controlBtnEnd:hover {
+  background: #dc2626;
+  transform: scale(1.05);
+}
+
+.overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--nav-bg);
+  backdrop-filter: blur(8px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 100;
+}
+
+.dialog {
+  background: var(--card-hover);
+  padding: 3rem;
+  border-radius: 1.5rem;
+  text-align: center;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  animation: scaleIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dialog h2 {
+  font-size: 1.75rem;
+  margin: 0 0 0.5rem 0;
+}
+
+.dialog p {
+  color: var(--text-muted);
+  margin-bottom: 2rem;
+}
+
+.dialogActions {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+}
+
+.btnAccept, .btnDecline {
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 0.75rem;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.2s;
+  color: var(--foreground);
+}
+
+.btnAccept {
+  background: #10b981;
+}
+
+.btnAccept:hover {
+  background: #059669;
+  transform: translateY(-2px);
+}
+
+.btnDecline {
+  background: #ef4444;
+}
+
+.btnDecline:hover {
+  background: #dc2626;
+  transform: translateY(-2px);
+}
+
+@keyframes pulse {
+  0% { opacity: 0.6; }
+  50% { opacity: 1; }
+  100% { opacity: 0.6; }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.adBanner {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  padding: 1rem 1.5rem;
+  border-radius: var(--radius);
+  margin: 1rem auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  width: calc(100% - 2rem);
+  max-width: 1200px;
+}
+
+.adBanner p {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--text-muted);
+}
+
+.adUpgradeBtn {
+  background: var(--primary-gradient);
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 9999px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.2s;
+}
+
+.adUpgradeBtn:hover {
+  opacity: 0.9;
+}

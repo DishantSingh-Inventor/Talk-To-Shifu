@@ -1,64 +1,65 @@
-import Image from "next/image";
+"use client";
+
+import { useConvexAuth } from "convex/react";
+import { useAuthActions } from "@convex-dev/auth/react";
+import { useRouter } from "next/navigation";
 import styles from "./page.module.css";
+import { Globe2, Shield, UserPlus } from "lucide-react";
 
 export default function Home() {
+  const { isAuthenticated, isLoading } = useConvexAuth();
+  const { signIn } = useAuthActions();
+  const router = useRouter();
+
   return (
-    <div className={styles.page}>
+    <div className={styles.container}>
+
       <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className={styles.intro}>
-          <h1>To get started, edit the page.tsx file.</h1>
-          <p>
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Learning
-            </a>{" "}
-            center.
+        <div className={styles.hero}>
+          <h1 className={styles.title}>
+            Connect across the <span className={styles.gradientText}>globe.</span>
+          </h1>
+          <p className={styles.subtitle}>
+            Finally, an authentic platform that actually helps you socialize. 
+            Learn new languages, dive into deep debates, find gaming teammates, and build real connections safely.
           </p>
+          
+          <div className={styles.heroActions}>
+            {isLoading ? (
+              <div className={styles.loader}></div>
+            ) : isAuthenticated ? (
+              <>
+                <button className={styles.btnStart} onClick={() => router.push("/profile")}>
+                  Start Matching
+                </button>
+                <button className={styles.btnSecondary} onClick={() => router.push("/learning")}>
+                  Start Learning
+                </button>
+              </>
+            ) : (
+              <button className={styles.btnStart} onClick={() => void signIn("google")}>
+                Get Started
+              </button>
+            )}
+          </div>
         </div>
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className={styles.secondary}
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+
+        <div className={styles.features}>
+          <div className={styles.featureCard}>
+            <Globe2 className={styles.featureIcon} />
+            <h3>Language Filters</h3>
+            <p>Connect with people who speak your language or the one you&apos;re learning.</p>
+          </div>
+          <div className={styles.featureCard}>
+            <UserPlus className={styles.featureIcon} />
+            <h3>Add Friends</h3>
+            <p>Add people you vibe with as friends to easily connect with them again in the future.</p>
+          </div>
+          <div className={styles.featureCard}>
+            <Shield className={styles.featureIcon} />
+            <h3>Safe & Secure</h3>
+            <p>Your safety is our priority. Enjoy peace of mind with our robust built-in reporting system and complete control over who you choose to interact with.</p>
+          </div>
         </div>
       </main>
     </div>
