@@ -3,6 +3,7 @@
 import { useConvexAuth } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
 import styles from "./page.module.css";
 import { Globe2, Shield, UserPlus } from "lucide-react";
 
@@ -10,6 +11,11 @@ export default function Home() {
   const { isAuthenticated, isLoading } = useConvexAuth();
   const { signIn } = useAuthActions();
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   return (
     <div className={styles.container}>
@@ -25,7 +31,7 @@ export default function Home() {
           </p>
           
           <div className={styles.heroActions}>
-            {isLoading ? (
+            {!mounted || isLoading ? (
               <div className={styles.loader}></div>
             ) : isAuthenticated ? (
               <>
