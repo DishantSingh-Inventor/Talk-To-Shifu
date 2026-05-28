@@ -119,12 +119,16 @@ export default function CallPage() {
             console.warn("Audio fallback failed:", audioErr);
             if (audioErr.message?.includes("DAILY_LIMIT_REACHED")) {
               setMediaError("You have reached your daily call limit. Please upgrade your subscription to continue calling non-friends.");
+            } else if (audioErr instanceof DOMException) {
+              setMediaError("Camera and microphone access is required. Please allow permissions and retry.");
             } else {
-              setMediaError("Unable to access camera or microphone. They might be in use by another application.");
+              setMediaError(`Backend Error: ${audioErr.message || audioErr}`);
             }
           }
-        } else {
+        } else if (e instanceof DOMException) {
           setMediaError("Camera and microphone access is required. Please allow permissions and retry.");
+        } else {
+          setMediaError(`Backend Error: ${e.message || e}`);
         }
       }
     };
