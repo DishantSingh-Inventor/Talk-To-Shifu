@@ -60,7 +60,7 @@ export function Header() {
     <nav className={styles.nav} ref={menuRef}>
       <Link href="/" className={styles.logo} onClick={closeMenu}>
         <Video className={styles.logoIcon} />
-        <span>Allyvora</span>
+        <span>Talk to Shifu</span>
       </Link>
 
       {/* Desktop nav links */}
