@@ -3,6 +3,8 @@
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { useEffect, useState, useRef, useCallback } from "react";
+import { useConvexAuth } from "convex/react";
+import { useAuthActions } from "@convex-dev/auth/react";
 import { Id } from "../../../convex/_generated/dataModel";
 import styles from "./call.module.css";
 import { Video, VideoOff, Mic, MicOff, PhoneOff, AlertTriangle, UserPlus, SkipForward, Check, X } from "lucide-react";
@@ -10,6 +12,10 @@ import { useRouter } from "next/navigation";
 
 export default function CallPage() {
   const router = useRouter();
+  const { isAuthenticated, isLoading } = useConvexAuth();
+  const { signIn } = useAuthActions();
+  if (isLoading) return <div className={styles.loading}>Loading...</div>;
+  if (!isAuthenticated) return <button className={styles.loginBtn} onClick={() => void signIn('google')}>Sign In</button>;
   const profile = useQuery(api.profiles.getProfile);
   const findMatch = useMutation(api.matches.findMatch);
   const updateMatchStatus = useMutation(api.matches.updateMatchStatus);
