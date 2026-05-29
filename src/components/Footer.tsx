@@ -9,7 +9,7 @@ export function Footer() {
         <div className={styles.brand}>
           <Link href="/" className={styles.logo}>
             <Video className={styles.logoIcon} />
-            <span>TalkToShifu</span>
+            <span>Allyvora</span>
           </Link>
           <p className={styles.tagline}>
             Bringing back the true purpose of social media.
@@ -30,7 +30,7 @@ export function Footer() {
         </div>
       </div>
       <div className={styles.bottom}>
-        <p>&copy; {new Date().getFullYear()} TalkToShifu. All rights reserved.</p>
+        <p>&copy; {new Date().getFullYear()} Allyvora. All rights reserved.</p>
       </div>
     </footer>
   );
