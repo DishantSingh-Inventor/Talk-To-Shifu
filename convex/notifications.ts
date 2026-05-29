@@ -21,7 +21,7 @@ export const listNotifications = query({
   args: {},
   handler: async (ctx) => {
     const userId = await auth.getUserId(ctx);
-    if (!userId) throw new Error("Unauthenticated");
+    if (!userId) return [];
     return await ctx.db
       .query("notifications")
       .withIndex("by_user", (q) => q.eq("userId", userId))

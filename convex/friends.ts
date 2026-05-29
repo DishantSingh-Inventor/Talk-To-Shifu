@@ -67,7 +67,7 @@ export const listFriends = query({
   args: {},
   handler: async (ctx) => {
     const userId = await auth.getUserId(ctx);
-    if (!userId) throw new Error("Unauthenticated");
+    if (!userId) return [];
     return await ctx.db
       .query("friends")
       .filter((q) =>
@@ -84,7 +84,7 @@ export const listPendingRequests = query({
   args: {},
   handler: async (ctx) => {
     const userId = await auth.getUserId(ctx);
-    if (!userId) throw new Error("Unauthenticated");
+    if (!userId) return [];
     return await ctx.db
       .query("friends")
       .filter((q) => q.and(q.eq(q.field("friendId"), userId), q.eq(q.field("status"), "pending")))

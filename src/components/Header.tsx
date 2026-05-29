@@ -20,7 +20,7 @@ export function Header() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const notifications = useQuery(api.notifications.listNotifications) || [];
+  const notifications = useQuery(api.notifications.listNotifications, isAuthenticated ? {} : "skip") || [];
   const unreadCount = notifications.filter((n) => !n.read).length;
   const markRead = useMutation(api.notifications.markRead);
 
