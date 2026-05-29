@@ -2,7 +2,6 @@
 "use client";
 
 import { useConvexAuth } from "convex/react";
-import { useAuthActions } from "@convex-dev/auth/react";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import styles from "@/app/page.module.css";
@@ -10,7 +9,6 @@ import { Globe2, Shield, UserPlus } from "lucide-react";
 
 export default function HomeClient() {
   const { isAuthenticated, isLoading } = useConvexAuth();
-  const { signIn } = useAuthActions();
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
 
@@ -37,7 +35,10 @@ export default function HomeClient() {
                 <button className={styles.btnSecondary} onClick={() => router.push("/learning")}>Start Learning</button>
               </>
             ) : (
-              <button className={styles.btnStart} onClick={() => router.push("/login")}>Start Meeting</button>
+              <>
+                <button className={styles.btnStart} onClick={() => router.push("/login?next=/profile")}>Start Meeting</button>
+                <button className={styles.btnSecondary} onClick={() => router.push("/login?next=/learning")}>Start Learning</button>
+              </>
             )}
           </div>
         </div>

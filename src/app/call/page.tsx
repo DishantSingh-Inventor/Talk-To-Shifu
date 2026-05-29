@@ -1,10 +1,8 @@
 "use client";
 
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, useConvexAuth } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { useEffect, useState, useRef, useCallback } from "react";
-import { useConvexAuth } from "convex/react";
-import { useAuthActions } from "@convex-dev/auth/react";
 import { Id } from "../../../convex/_generated/dataModel";
 import styles from "./call.module.css";
 import { Video, VideoOff, Mic, MicOff, PhoneOff, AlertTriangle, UserPlus, SkipForward, Check, X } from "lucide-react";
@@ -12,19 +10,13 @@ import { useRouter } from "next/navigation";
 
 export default function CallPage() {
   const router = useRouter();
-  const { isAuthenticated, isLoading } = useConvexAuth();
-  const { signIn } = useAuthActions();
-  if (isLoading) return <div className={styles.loading}>Loading...</div>;
-  if (!isAuthenticated) return <button className={styles.loginBtn} onClick={() => void signIn('google')}>Sign In</button>;
-  const profile = useQuery(api.profiles.getProfile);
+  const { isAuthenticated, isLoading: authLoading } = useConvexAuth();
+  const profile = useQuery(api.profiles.getProfile, isAuthenticated ? {} : "skip");
   const findMatch = useMutation(api.matches.findMatch);
   const updateMatchStatus = useMutation(api.matches.updateMatchStatus);
   const setSDP = useMutation(api.matches.setSDP);
   const addIceCandidate = useMutation(api.matches.addIceCandidate);
   const incrementCallTime = useMutation(api.profiles.incrementCallTime);
-
-  // State to control manual start
-  const [meetingStarted, setMeetingStarted] = useState(false);
 
   const [matchId, setMatchId] = useState<Id<"matches"> | null>(null);
   const match = useQuery(api.matches.getMatch, matchId ? { matchId } : "skip");
@@ -43,51 +35,6 @@ export default function CallPage() {
   const peerConnection = useRef<RTCPeerConnection | null>(null);
   const hasStartedCall = useRef(false);
 
-  // Function to initialize media and find match
-  const startCall = async () => {
-    if (!profile) {
-      alert('Profile not loaded');
-      return;
-    }
-    setMeetingStarted(true);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      setLocalStream(stream);
-      if (localVideoRef.current) localVideoRef.current.srcObject = stream;
-      const mId = await findMatch();
-      setMatchId(mId);
-    } catch (e: any) {
-      console.warn('Media access warning or match error:', e);
-      if (e.message?.includes('DAILY_LIMIT_REACHED')) {
-        setMediaError('You have reached your daily call limit. Please upgrade your subscription to continue calling non-friends.');
-        return;
-      }
-      if (e instanceof DOMException && e.name === 'NotReadableError') {
-        try {
-          const audioStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
-          setLocalStream(audioStream);
-          if (localVideoRef.current) localVideoRef.current.srcObject = audioStream;
-          setIsVideoOff(true);
-          const mId = await findMatch();
-          setMatchId(mId);
-        } catch (audioErr: any) {
-          console.warn('Audio fallback failed:', audioErr);
-          if (audioErr.message?.includes('DAILY_LIMIT_REACHED')) {
-            setMediaError('You have reached your daily call limit. Please upgrade your subscription to continue calling non-friends.');
-          } else if (audioErr instanceof DOMException) {
-            setMediaError('Camera and microphone access is required. Please allow permissions and retry.');
-          } else {
-            setMediaError(`Backend Error: ${audioErr.message || audioErr}`);
-          }
-        }
-      } else if (e instanceof DOMException) {
-        setMediaError('Camera and microphone access is required. Please allow permissions and retry.');
-      } else {
-        setMediaError(`Backend Error: ${e.message || e}`);
-      }
-    }
-  };
-
   const handleAction = useCallback(async (action: "accept" | "decline" | "end") => {
     if (matchId) {
       await updateMatchStatus({ matchId, action });
@@ -99,7 +46,6 @@ export default function CallPage() {
     setMatchId(null);
     hasStartedCall.current = false;
     setRemoteStream(null);
-    setMeetingStarted(false);
     if (peerConnection.current) {
       peerConnection.current.close();
       peerConnection.current = null;
@@ -136,6 +82,68 @@ export default function CallPage() {
       }
     }
   }, [localStream, matchId, addIceCandidate, setSDP]);
+
+  // 1. Get user media and find a match
+  useEffect(() => {
+    let stream: MediaStream | null = null;
+    
+    const init = async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        setLocalStream(stream);
+        if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+        // Find match if profile is loaded
+        if (profile) {
+          const mId = await findMatch();
+          setMatchId(mId);
+        }
+      } catch (e: any) {
+        console.warn("Media access warning or match error:", e);
+        if (e.message?.includes("DAILY_LIMIT_REACHED")) {
+          setMediaError("You have reached your daily call limit. Please upgrade your subscription to continue calling non-friends.");
+          return;
+        }
+
+        // If video not available, fallback to audio only
+        if (e instanceof DOMException && e.name === "NotReadableError") {
+          try {
+            const audioStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
+            setLocalStream(audioStream);
+            if (localVideoRef.current) localVideoRef.current.srcObject = audioStream;
+            setIsVideoOff(true);
+            // Proceed with matching using audio only
+            if (profile) {
+              const mId = await findMatch();
+              setMatchId(mId);
+            }
+          } catch (audioErr: any) {
+            console.warn("Audio fallback failed:", audioErr);
+            if (audioErr.message?.includes("DAILY_LIMIT_REACHED")) {
+              setMediaError("You have reached your daily call limit. Please upgrade your subscription to continue calling non-friends.");
+            } else if (audioErr instanceof DOMException) {
+              setMediaError("Camera and microphone access is required. Please allow permissions and retry.");
+            } else {
+              setMediaError(`Backend Error: ${audioErr.message || audioErr}`);
+            }
+          }
+        } else if (e instanceof DOMException) {
+          setMediaError("Camera and microphone access is required. Please allow permissions and retry.");
+        } else {
+          setMediaError(`Backend Error: ${e.message || e}`);
+        }
+      }
+    };
+    
+    if (profile && !matchId) {
+      init();
+    }
+    
+    return () => {
+      if (stream) {
+        stream.getTracks().forEach((track) => track.stop());
+      }
+    };
+  }, [profile, matchId, findMatch]);
 
   // 2. Handle connection acceptance and WebRTC setup
   useEffect(() => {
@@ -218,7 +226,6 @@ export default function CallPage() {
 
   const toggleMute = () => {
     if (localStream && localStream.getAudioTracks().length > 0) {
-      // Invert audio track enabled state
       localStream.getAudioTracks()[0].enabled = !isMuted;
       setIsMuted(!isMuted);
     }
@@ -226,7 +233,6 @@ export default function CallPage() {
 
   const toggleVideo = () => {
     if (localStream && localStream.getVideoTracks().length > 0) {
-      // Invert video track enabled state
       localStream.getVideoTracks()[0].enabled = !isVideoOff;
       setIsVideoOff(!isVideoOff);
     }
@@ -247,6 +253,15 @@ export default function CallPage() {
       alert('No participant to add as friend');
     }
   };
+
+  // --- Render guards (after all hooks) ---
+
+  if (authLoading) return <div className={styles.loading}>Loading...</div>;
+
+  if (!isAuthenticated) {
+    router.push("/login?next=/call");
+    return <div className={styles.loading}>Redirecting to login...</div>;
+  }
 
   if (!profile) return <div className={styles.loading}>Loading profile...</div>;
 

@@ -3,30 +3,57 @@
 
 import { useConvexAuth } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
-import { useRouter } from "next/navigation";
-import styles from "../page.module.css"; // reuse styles if appropriate
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect } from "react";
+import styles from "../page.module.css";
 
-export default function LoginPage() {
+function LoginForm() {
   const { isAuthenticated, isLoading } = useConvexAuth();
   const { signIn } = useAuthActions();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const next = searchParams?.get("next") || "/profile";
+
+  useEffect(() => {
+    if (isAuthenticated && !isLoading) {
+      router.push(next);
+    }
+  }, [isAuthenticated, isLoading, next, router]);
 
   if (isLoading) {
-    return <div className={styles.loading}>Loading...</div>;
+    return (
+      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh" }}>
+        <div className={styles.loader} />
+      </div>
+    );
   }
 
   if (isAuthenticated) {
-    // Show a button to go to the home page after sign‑in
     return (
-      <div className={styles.container} style={{ justifyContent: "center", alignItems: "center", display: "flex", height: "100vh" }}>
-        <button className={styles.loginBtn} onClick={() => router.push("/")}>Go to Home</button>
+      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh" }}>
+        <p>Redirecting...</p>
       </div>
     );
   }
 
   return (
-    <div className={styles.container} style={{ justifyContent: "center", alignItems: "center", display: "flex", height: "100vh" }}>
-      <button className={styles.loginBtn} onClick={() => void signIn("google")}>Sign In with Google</button>
+    <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", height: "100vh", gap: "1.5rem" }}>
+      <h1 style={{ fontSize: "1.8rem", fontWeight: 700 }}>Sign in to continue</h1>
+      <button className={styles.btnStart} onClick={() => void signIn("google")}>
+        Sign In with Google
+      </button>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh" }}>
+        <p>Loading...</p>
+      </div>
+    }>
+      <LoginForm />
+    </Suspense>
   );
 }

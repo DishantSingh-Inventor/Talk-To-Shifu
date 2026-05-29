@@ -13,8 +13,8 @@ export default function FriendsPage() {
   const { isAuthenticated, isLoading } = useConvexAuth();
   const router = useRouter();
 
-  const friends = useQuery(api.friends.listFriends) || [];
-  const pendingRequests = useQuery(api.friends.listPendingRequests) || [];
+  const friends = useQuery(api.friends.listFriends, isAuthenticated ? {} : "skip") || [];
+  const pendingRequests = useQuery(api.friends.listPendingRequests, isAuthenticated ? {} : "skip") || [];
   
   const sendRequest = useMutation(api.friends.sendFriendRequest);
   const updateStatus = useMutation(api.friends.updateFriendStatus);
