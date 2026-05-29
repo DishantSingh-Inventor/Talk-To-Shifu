@@ -37,7 +37,7 @@ export default function HomeClient() {
                 <button className={styles.btnSecondary} onClick={() => router.push("/learning")}>Start Learning</button>
               </>
             ) : (
-              <button className={styles.btnStart} onClick={() => router.push("/login")}>Login</button>
+              <button className={styles.btnStart} onClick={() => router.push("/login")}>Start Meeting</button>
             )}
           </div>
         </div>

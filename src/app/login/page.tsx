@@ -16,9 +16,12 @@ export default function LoginPage() {
   }
 
   if (isAuthenticated) {
-    // Already logged in, redirect to home
-    router.push("/");
-    return null;
+    // Show a button to go to the home page after sign‑in
+    return (
+      <div className={styles.container} style={{ justifyContent: "center", alignItems: "center", display: "flex", height: "100vh" }}>
+        <button className={styles.loginBtn} onClick={() => router.push("/")}>Go to Home</button>
+      </div>
+    );
   }
 
   return (

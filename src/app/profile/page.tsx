@@ -68,7 +68,7 @@ function ProfileForm() {
         ...(mode === "debate" && { debateTopic }),
         ...(mode === "politics" && { politicsTopic }),
       });
-      router.push("/call");
+      router.push("/login?next=/call");
     } catch (e) {
       console.error(e);
       alert("Failed to save profile.");
