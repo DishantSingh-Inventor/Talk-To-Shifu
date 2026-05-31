@@ -172,3 +172,38 @@ export const getIceCandidates = query({
       .collect();
   },
 });
+
+export const updateMediaStatus = mutation({
+  args: {
+    matchId: v.id("matches"),
+    muted: v.optional(v.boolean()),
+    videoOff: v.optional(v.boolean()),
+    speaking: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await auth.getUserId(ctx);
+    if (!userId) return;
+
+    const match = await ctx.db.get(args.matchId);
+    if (!match) return;
+
+    const isUser1 = match.user1 === userId;
+    const isUser2 = match.user2 === userId;
+    
+    if (!isUser1 && !isUser2) return;
+
+    if (isUser1) {
+      await ctx.db.patch(args.matchId, {
+        ...(args.muted !== undefined && { user1Muted: args.muted }),
+        ...(args.videoOff !== undefined && { user1VideoOff: args.videoOff }),
+        ...(args.speaking !== undefined && { user1Speaking: args.speaking }),
+      });
+    } else {
+      await ctx.db.patch(args.matchId, {
+        ...(args.muted !== undefined && { user2Muted: args.muted }),
+        ...(args.videoOff !== undefined && { user2VideoOff: args.videoOff }),
+        ...(args.speaking !== undefined && { user2Speaking: args.speaking }),
+      });
+    }
+  },
+});

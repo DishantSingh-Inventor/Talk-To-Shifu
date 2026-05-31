@@ -17,6 +17,7 @@ export default function CallPage() {
   const setSDP = useMutation(api.matches.setSDP);
   const addIceCandidate = useMutation(api.matches.addIceCandidate);
   const incrementCallTime = useMutation(api.profiles.incrementCallTime);
+  const updateMediaStatus = useMutation(api.matches.updateMediaStatus);
 
   const [matchId, setMatchId] = useState<Id<"matches"> | null>(null);
   const match = useQuery(api.matches.getMatch, matchId ? { matchId } : "skip");
@@ -43,6 +44,7 @@ export default function CallPage() {
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const peerConnection = useRef<RTCPeerConnection | null>(null);
+  const remoteMediaStream = useRef<MediaStream | null>(null);
   const hasStartedCall = useRef(false);
 
   const handleAction = useCallback(async (action: "accept" | "decline" | "end") => {
@@ -56,6 +58,7 @@ export default function CallPage() {
     setMatchId(null);
     hasStartedCall.current = false;
     setRemoteStream(null);
+    remoteMediaStream.current = null;
     if (peerConnection.current) {
       peerConnection.current.close();
       peerConnection.current = null;
@@ -162,9 +165,14 @@ export default function CallPage() {
     localStream?.getTracks().forEach(track => pc.addTrack(track, localStream));
 
     pc.ontrack = (event) => {
-      setRemoteStream(event.streams[0]);
+      console.log("Remote track received:", event.track.kind);
+      if (!remoteMediaStream.current) {
+        remoteMediaStream.current = new MediaStream();
+      }
+      remoteMediaStream.current.addTrack(event.track);
+      setRemoteStream(remoteMediaStream.current);
       if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = event.streams[0];
+        remoteVideoRef.current.srcObject = remoteMediaStream.current;
       }
     };
 
@@ -377,17 +385,100 @@ export default function CallPage() {
 
   const toggleMute = () => {
     if (localStream && localStream.getAudioTracks().length > 0) {
-      localStream.getAudioTracks()[0].enabled = !isMuted;
-      setIsMuted(!isMuted);
+      const nextMute = !isMuted;
+      localStream.getAudioTracks()[0].enabled = !nextMute;
+      setIsMuted(nextMute);
+      if (matchId) {
+        updateMediaStatus({ matchId, muted: nextMute });
+      }
     }
   };
 
   const toggleVideo = () => {
     if (localStream && localStream.getVideoTracks().length > 0) {
-      localStream.getVideoTracks()[0].enabled = !isVideoOff;
-      setIsVideoOff(!isVideoOff);
+      const nextVideoOff = !isVideoOff;
+      localStream.getVideoTracks()[0].enabled = !nextVideoOff;
+      setIsVideoOff(nextVideoOff);
+      if (matchId) {
+        updateMediaStatus({ matchId, videoOff: nextVideoOff });
+      }
     }
   };
+
+  // Speaking detection using Web Audio API
+  useEffect(() => {
+    if (!localStream || isMuted || !matchId) {
+      if (matchId) {
+        updateMediaStatus({ matchId, speaking: false });
+      }
+      return;
+    }
+
+    let audioContext: AudioContext | null = null;
+    let analyser: AnalyserNode | null = null;
+    let source: MediaStreamAudioSourceNode | null = null;
+    let animationFrameId: number;
+
+    const detectSpeaking = () => {
+      try {
+        audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        analyser = audioContext.createAnalyser();
+        source = audioContext.createMediaStreamSource(localStream);
+        source.connect(analyser);
+
+        analyser.fftSize = 256;
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+
+        let lastSpeakingState = false;
+        let silenceCounter = 0;
+
+        const checkVolume = () => {
+          if (!analyser) return;
+          analyser.getByteFrequencyData(dataArray);
+
+          let sum = 0;
+          for (let i = 0; i < bufferLength; i++) {
+            sum += dataArray[i];
+          }
+          const average = sum / bufferLength;
+
+          // Speaking threshold
+          const isSpeaking = average > 12;
+
+          if (isSpeaking) {
+            silenceCounter = 0;
+            if (!lastSpeakingState) {
+              lastSpeakingState = true;
+              updateMediaStatus({ matchId, speaking: true });
+            }
+          } else {
+            silenceCounter++;
+            if (silenceCounter > 20) { // require a short silence window to prevent flickering
+              if (lastSpeakingState) {
+                lastSpeakingState = false;
+                updateMediaStatus({ matchId, speaking: false });
+              }
+            }
+          }
+
+          animationFrameId = requestAnimationFrame(checkVolume);
+        };
+
+        checkVolume();
+      } catch (err) {
+        console.warn("Audio Context speaking detection failed:", err);
+      }
+    };
+
+    detectSpeaking();
+
+    return () => {
+      cancelAnimationFrame(animationFrameId);
+      if (source) source.disconnect();
+      if (audioContext) audioContext.close();
+    };
+  }, [localStream, isMuted, matchId, updateMediaStatus]);
 
   const sendFriendRequest = useMutation(api.friends.sendFriendRequest);
 
@@ -435,6 +526,14 @@ export default function CallPage() {
   const myDisplayName = isConnected ? `${isUser1 ? match?.user1Name : match?.user2Name}` : "You";
   const peerDisplayName = isConnected ? `${isUser1 ? match?.user2Name : match?.user1Name}` : "Stranger";
 
+  const peerMuted = isConnected ? (isUser1 ? match?.user2Muted : match?.user1Muted) : false;
+  const peerVideoOff = isConnected ? (isUser1 ? match?.user2VideoOff : match?.user1VideoOff) : false;
+  const peerSpeaking = isConnected ? (isUser1 ? match?.user2Speaking : match?.user1Speaking) : false;
+
+  const myMuted = isMuted;
+  const myVideoOff = isVideoOff;
+  const mySpeaking = isConnected ? (isUser1 ? match?.user1Speaking : match?.user2Speaking) : false;
+
   return (
     <div className={styles.container}>
       {showAd && (
@@ -444,21 +543,56 @@ export default function CallPage() {
         </div>
       )}
       <div className={styles.videoGrid}>
-        <div className={styles.videoContainer}>
-          <video ref={localVideoRef} autoPlay playsInline muted className={styles.video} />
-          <div className={styles.videoLabel}>{myDisplayName}</div>
+        {/* Local Video Container */}
+        <div className={`${styles.videoContainer} ${mySpeaking ? styles.speakingActive : ""}`}>
+          {myVideoOff ? (
+            <div className={styles.avatarPlaceholderContainer}>
+              <div className={`${styles.avatarBig} ${mySpeaking ? styles.speakingPulse : ""}`}>
+                {myDisplayName.substring(0, 2).toUpperCase()}
+              </div>
+              {mySpeaking && (
+                <div className={styles.speakingWave}>
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                </div>
+              )}
+              <p className={styles.placeholderText}>Camera is off</p>
+            </div>
+          ) : (
+            <video ref={localVideoRef} autoPlay playsInline muted className={styles.video} />
+          )}
+          <div className={styles.videoLabel}>
+            {myDisplayName}
+            {myMuted && <MicOff size={14} className={styles.mutedBadge} />}
+          </div>
         </div>
         
-        <div className={styles.videoContainer}>
-          {remoteStream ? (
-            <video ref={remoteVideoRef} autoPlay playsInline className={styles.video} />
-          ) : (
-            <div className={styles.placeholderVideo}>
-              {match?.status === "waiting" && <p>Finding someone...</p>}
-              {match?.status === "connecting" && <p>Found someone! Connecting call...</p>}
+        {/* Stranger Video Container */}
+        <div className={`${styles.videoContainer} ${peerSpeaking ? styles.speakingActive : ""}`}>
+          {peerVideoOff || !remoteStream ? (
+            <div className={styles.avatarPlaceholderContainer}>
+              <div className={`${styles.avatarBig} ${peerSpeaking ? styles.speakingPulse : ""}`}>
+                {peerDisplayName.substring(0, 2).toUpperCase()}
+              </div>
+              {peerSpeaking && (
+                <div className={styles.speakingWave}>
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                </div>
+              )}
+              {(!remoteStream && match?.status === "waiting") && <p className={styles.placeholderText}>Finding someone...</p>}
+              {(!remoteStream && match?.status === "connecting") && <p className={styles.placeholderText}>Found someone! Connecting call...</p>}
+              {(remoteStream && peerVideoOff) && <p className={styles.placeholderText}>Camera is turned off</p>}
             </div>
+          ) : (
+            <video ref={remoteVideoRef} autoPlay playsInline className={styles.video} />
           )}
-          <div className={styles.videoLabel}>{peerDisplayName}</div>
+          <div className={styles.videoLabel}>
+            {peerDisplayName}
+            {peerMuted && <MicOff size={14} className={styles.mutedBadge} />}
+          </div>
         </div>
       </div>
 

@@ -480,3 +480,111 @@
     transform: translate(-50%, 0);
   }
 }
+
+.speakingActive {
+  border-color: #10b981 !important;
+  box-shadow: 0 0 15px rgba(16, 185, 129, 0.4) !important;
+}
+
+.avatarPlaceholderContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(circle, rgba(30, 41, 59, 0.9) 0%, rgba(15, 23, 42, 0.95) 100%);
+  position: relative;
+}
+
+.avatarBig {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+  border: 3px solid rgba(255, 255, 255, 0.15);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  font-weight: 800;
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
+  transition: all 0.3s ease;
+}
+
+.speakingPulse {
+  animation: speakingPulseAnim 1.5s infinite ease-in-out;
+  border-color: #10b981 !important;
+}
+
+@keyframes speakingPulseAnim {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0px rgba(16, 185, 129, 0.5);
+  }
+  70% {
+    transform: scale(1.05);
+    box-shadow: 0 0 0 15px rgba(16, 185, 129, 0);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0px rgba(16, 185, 129, 0);
+  }
+}
+
+.speakingWave {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 1rem;
+  height: 20px;
+}
+
+.speakingWave span {
+  display: inline-block;
+  width: 4px;
+  height: 8px;
+  background-color: #10b981;
+  border-radius: 2px;
+  animation: bounce 1.2s infinite ease-in-out;
+}
+
+.speakingWave span:nth-child(2) {
+  animation-delay: -0.4s;
+  height: 14px;
+}
+
+.speakingWave span:nth-child(3) {
+  animation-delay: -0.8s;
+  height: 10px;
+}
+
+@keyframes bounce {
+  0%, 100% {
+    transform: scaleY(1);
+  }
+  50% {
+    transform: scaleY(2.2);
+  }
+}
+
+.placeholderText {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-top: 0.75rem;
+  font-weight: 550;
+  z-index: 5;
+}
+
+.mutedBadge {
+  margin-left: 0.5rem;
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  padding: 2px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}

@@ -27,6 +27,12 @@ export default defineSchema({
     status: v.union(v.literal("waiting"), v.literal("connecting"), v.literal("active"), v.literal("ended")),
     sdpOffer: v.optional(v.string()), // JSON stringified RTCSessionDescription
     sdpAnswer: v.optional(v.string()),
+    user1Muted: v.optional(v.boolean()),
+    user1VideoOff: v.optional(v.boolean()),
+    user1Speaking: v.optional(v.boolean()),
+    user2Muted: v.optional(v.boolean()),
+    user2VideoOff: v.optional(v.boolean()),
+    user2Speaking: v.optional(v.boolean()),
   }).index("by_status", ["status"]),
   
   iceCandidates: defineTable({
