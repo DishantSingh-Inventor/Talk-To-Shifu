@@ -5,7 +5,7 @@ import { api } from "../../../convex/_generated/api";
 import { useEffect, useState, useRef, useCallback } from "react";
 import { Id } from "../../../convex/_generated/dataModel";
 import styles from "./call.module.css";
-import { Video, VideoOff, Mic, MicOff, PhoneOff, AlertTriangle, UserPlus, SkipForward, Check, X } from "lucide-react";
+import { Video, VideoOff, Mic, MicOff, PhoneOff, AlertTriangle, UserPlus, SkipForward, Check, X, MoreVertical } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 export default function CallPage() {
@@ -29,6 +29,14 @@ export default function CallPage() {
   const [showReportMenu, setShowReportMenu] = useState(false);
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [showAd, setShowAd] = useState(false);
+
+  // States for device selection
+  const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
+  const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedAudioId, setSelectedAudioId] = useState<string>("");
+  const [selectedVideoId, setSelectedVideoId] = useState<string>("");
+  const [showMicMenu, setShowMicMenu] = useState(false);
+  const [showCamMenu, setShowCamMenu] = useState(false);
   
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -51,6 +59,96 @@ export default function CallPage() {
       peerConnection.current = null;
     }
   }, [matchId, handleAction]);
+
+  // Refresh and list all available media devices
+  const refreshDevices = useCallback(async () => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const audios = devices.filter((d) => d.kind === "audioinput");
+      const videos = devices.filter((d) => d.kind === "videoinput");
+      setAudioDevices(audios);
+      setVideoDevices(videos);
+    } catch (err) {
+      console.error("Error enumerating devices:", err);
+    }
+  }, []);
+
+  // Switch microphone input track dynamically in-flight
+  const switchAudioDevice = async (deviceId: string) => {
+    try {
+      setSelectedAudioId(deviceId);
+      if (!localStream) return;
+
+      // Stop existing audio tracks
+      localStream.getAudioTracks().forEach((track) => track.stop());
+
+      // Get new audio stream track for specific device
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        audio: { deviceId: { exact: deviceId } },
+        video: false,
+      });
+      const newTrack = newStream.getAudioTracks()[0];
+
+      // Replace track in localStream
+      localStream.getAudioTracks().forEach((track) => localStream.removeTrack(track));
+      localStream.addTrack(newTrack);
+
+      // Replace track in WebRTC active connection
+      if (peerConnection.current) {
+        const senders = peerConnection.current.getSenders();
+        const audioSender = senders.find((s) => s.track && s.track.kind === "audio");
+        if (audioSender) {
+          await audioSender.replaceTrack(newTrack);
+        }
+      }
+
+      // Keep the correct mute status
+      newTrack.enabled = !isMuted;
+    } catch (err) {
+      console.error("Failed to switch microphone:", err);
+    }
+  };
+
+  // Switch camera input track dynamically in-flight
+  const switchVideoDevice = async (deviceId: string) => {
+    try {
+      setSelectedVideoId(deviceId);
+      if (!localStream) return;
+
+      // Stop existing video tracks
+      localStream.getVideoTracks().forEach((track) => track.stop());
+
+      // Get new video stream track for specific device
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { deviceId: { exact: deviceId } },
+      });
+      const newTrack = newStream.getVideoTracks()[0];
+
+      // Replace track in localStream
+      localStream.getVideoTracks().forEach((track) => localStream.removeTrack(track));
+      localStream.addTrack(newTrack);
+
+      // Update the local HTML video element
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = localStream;
+      }
+
+      // Replace track in WebRTC active connection
+      if (peerConnection.current) {
+        const senders = peerConnection.current.getSenders();
+        const videoSender = senders.find((s) => s.track && s.track.kind === "video");
+        if (videoSender) {
+          await videoSender.replaceTrack(newTrack);
+        }
+      }
+
+      // Keep the correct video status
+      newTrack.enabled = !isVideoOff;
+    } catch (err) {
+      console.error("Failed to switch camera:", err);
+    }
+  };
 
   const setupWebRTC = useCallback(async (isUser1: boolean) => {
     const pc = new RTCPeerConnection({
@@ -92,6 +190,16 @@ export default function CallPage() {
         stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         setLocalStream(stream);
         if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+        
+        // Enumerate devices once stream is initialized
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const audios = devices.filter((d) => d.kind === "audioinput");
+        const videos = devices.filter((d) => d.kind === "videoinput");
+        setAudioDevices(audios);
+        setVideoDevices(videos);
+        if (audios.length > 0) setSelectedAudioId(audios[0].deviceId);
+        if (videos.length > 0) setSelectedVideoId(videos[0].deviceId);
+
         // Find match if profile is loaded
         if (profile) {
           const mId = await findMatch();
@@ -111,6 +219,13 @@ export default function CallPage() {
             setLocalStream(audioStream);
             if (localVideoRef.current) localVideoRef.current.srcObject = audioStream;
             setIsVideoOff(true);
+            
+            // Enumerate devices for audio fallback
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const audios = devices.filter((d) => d.kind === "audioinput");
+            setAudioDevices(audios);
+            if (audios.length > 0) setSelectedAudioId(audios[0].deviceId);
+
             // Proceed with matching using audio only
             if (profile) {
               const mId = await findMatch();
@@ -166,6 +281,17 @@ export default function CallPage() {
       }
     }
   }, [match, profile, localStream, handleSkip, setupWebRTC]);
+
+  // Auto-accept calls immediately when a match is found (bypassing manual Accept popup)
+  useEffect(() => {
+    if (!match || !profile) return;
+    const isUser1 = match.user1 === profile.userId;
+    const myStatus = isUser1 ? match.user1Status : match.user2Status;
+
+    if (match.status === "connecting" && myStatus === "waiting") {
+      handleAction("accept");
+    }
+  }, [match, profile, handleAction]);
 
   // Heartbeat for Call Limit
   useEffect(() => {
@@ -301,39 +427,95 @@ export default function CallPage() {
           ) : (
             <div className={styles.placeholderVideo}>
               {match?.status === "waiting" && <p>Finding someone...</p>}
-              {match?.status === "connecting" && <p>Found someone! Waiting for acceptance...</p>}
+              {match?.status === "connecting" && <p>Found someone! Connecting call...</p>}
             </div>
           )}
           <div className={styles.videoLabel}>Stranger</div>
         </div>
       </div>
 
-      {/* Acceptance Overlay */}
-      {match?.status === "connecting" && myStatus === "waiting" && (
-        <div className={styles.overlay}>
-          <div className={styles.dialog}>
-            <h2>Connection Found!</h2>
-            <p>They matched your language preferences.</p>
-            <div className={styles.dialogActions}>
-              <button className={styles.btnDecline} onClick={() => handleAction("decline")}>
-                <X size={20} /> Decline
-              </button>
-              <button className={styles.btnAccept} onClick={() => handleAction("accept")}>
-                <Check size={20} /> Accept
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Manual Acceptance Overlay has been removed to skip and connect directly */}
 
       {/* Controls */}
       <div className={styles.controls}>
-        <button className={styles.controlBtn} onClick={toggleMute} title={isMuted ? "Unmute" : "Mute"}>
-          {isMuted ? <MicOff /> : <Mic />}
-        </button>
-        <button className={styles.controlBtn} onClick={toggleVideo} title={isVideoOff ? "Turn Video On" : "Turn Video Off"}>
-          {isVideoOff ? <VideoOff /> : <Video />}
-        </button>
+        {/* Microphone capsule with 3-dot option dropdown */}
+        <div className={styles.controlWrapper}>
+          <button className={styles.controlBtn} onClick={toggleMute} title={isMuted ? "Unmute" : "Mute"}>
+            {isMuted ? <MicOff /> : <Mic />}
+          </button>
+          <button 
+            className={styles.moreBtn} 
+            onClick={() => {
+              setShowMicMenu(!showMicMenu);
+              setShowCamMenu(false);
+              refreshDevices();
+            }} 
+            title="Microphone Options"
+          >
+            <MoreVertical size={16} />
+          </button>
+          {showMicMenu && (
+            <div className={styles.deviceMenu}>
+              <div className={styles.menuHeader}>Select Microphone</div>
+              {audioDevices.length === 0 ? (
+                <div className={styles.noDevices}>No microphones found</div>
+              ) : (
+                audioDevices.map((device) => (
+                  <button
+                    key={device.deviceId}
+                    className={`${styles.menuItem} ${selectedAudioId === device.deviceId ? styles.activeItem : ""}`}
+                    onClick={() => {
+                      switchAudioDevice(device.deviceId);
+                      setShowMicMenu(false);
+                    }}
+                  >
+                    {device.label || `Microphone ${device.deviceId.slice(0, 5)}`}
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Camera capsule with 3-dot option dropdown */}
+        <div className={styles.controlWrapper}>
+          <button className={styles.controlBtn} onClick={toggleVideo} title={isVideoOff ? "Turn Video On" : "Turn Video Off"}>
+            {isVideoOff ? <VideoOff /> : <Video />}
+          </button>
+          <button 
+            className={styles.moreBtn} 
+            onClick={() => {
+              setShowCamMenu(!showCamMenu);
+              setShowMicMenu(false);
+              refreshDevices();
+            }} 
+            title="Camera Options"
+          >
+            <MoreVertical size={16} />
+          </button>
+          {showCamMenu && (
+            <div className={styles.deviceMenu}>
+              <div className={styles.menuHeader}>Select Camera</div>
+              {videoDevices.length === 0 ? (
+                <div className={styles.noDevices}>No cameras found</div>
+              ) : (
+                videoDevices.map((device) => (
+                  <button
+                    key={device.deviceId}
+                    className={`${styles.menuItem} ${selectedVideoId === device.deviceId ? styles.activeItem : ""}`}
+                    onClick={() => {
+                      switchVideoDevice(device.deviceId);
+                      setShowCamMenu(false);
+                    }}
+                  >
+                    {device.label || `Camera ${device.deviceId.slice(0, 5)}`}
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+
         <button className={styles.controlBtnAction} title="Add Friend" onClick={handleAddFriend}>
           <UserPlus size={20} />
         </button>
