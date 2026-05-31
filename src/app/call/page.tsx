@@ -39,14 +39,30 @@ export default function CallPage() {
   const [showMicMenu, setShowMicMenu] = useState(false);
   const [showCamMenu, setShowCamMenu] = useState(false);
   const [pcInstance, setPcInstance] = useState<RTCPeerConnection | null>(null);
-  
-  const queuedCandidates = useRef<RTCIceCandidateInit[]>([]);
+
+  // Helper declarations for reactive call parameters (defined at top to be accessible in hooks)
+  const isUser1 = match?.user1 === profile?.userId;
+  const myStatus = isUser1 ? match?.user1Status : match?.user2Status;
+  const isConnected = match?.status === "active";
+  const myDisplayName = isConnected ? `${isUser1 ? match?.user1Name : match?.user2Name}` : "You";
+  const peerDisplayName = isConnected ? `${isUser1 ? match?.user2Name : match?.user1Name}` : "Stranger";
+
+  const peerMuted = isConnected ? (isUser1 ? match?.user2Muted : match?.user1Muted) : false;
+  const peerVideoOff = isConnected ? (isUser1 ? match?.user2VideoOff : match?.user1VideoOff) : false;
+  const peerSpeaking = isConnected ? (isUser1 ? match?.user2Speaking : match?.user1Speaking) : false;
+
+  const myMuted = isMuted;
+  const myVideoOff = isVideoOff;
+  const mySpeaking = isConnected ? (isUser1 ? match?.user1Speaking : match?.user2Speaking) : false;
   
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const peerConnection = useRef<RTCPeerConnection | null>(null);
   const remoteMediaStream = useRef<MediaStream | null>(null);
   const hasStartedCall = useRef(false);
+  const addedCandidates = useRef<Set<string>>(new Set());
+  const sdpOfferProcessed = useRef(false);
+  const sdpAnswerProcessed = useRef(false);
 
   const handleAction = useCallback(async (action: "accept" | "decline" | "end") => {
     if (matchId) {
@@ -61,6 +77,9 @@ export default function CallPage() {
     setRemoteStream(null);
     remoteMediaStream.current = null;
     setPcInstance(null);
+    addedCandidates.current.clear();
+    sdpOfferProcessed.current = false;
+    sdpAnswerProcessed.current = false;
     if (peerConnection.current) {
       peerConnection.current.close();
       peerConnection.current = null;
@@ -158,6 +177,7 @@ export default function CallPage() {
   };
 
   const setupWebRTC = useCallback(async (isUser1: boolean) => {
+    console.log("Initializing RTCPeerConnection...");
     const pc = new RTCPeerConnection({
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
     });
@@ -165,7 +185,10 @@ export default function CallPage() {
     peerConnection.current = pc;
     setPcInstance(pc);
 
-    localStream?.getTracks().forEach(track => pc.addTrack(track, localStream));
+    localStream?.getTracks().forEach(track => {
+      console.log("Adding local track to PeerConnection:", track.kind);
+      pc.addTrack(track, localStream);
+    });
 
     pc.ontrack = (event) => {
       console.log("Remote track received:", event.track.kind);
@@ -173,19 +196,28 @@ export default function CallPage() {
         remoteMediaStream.current = new MediaStream();
       }
       remoteMediaStream.current.addTrack(event.track);
-      setRemoteStream(remoteMediaStream.current);
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = remoteMediaStream.current;
-      }
+      
+      // Force React state update with a new MediaStream reference so UI re-renders
+      setRemoteStream(new MediaStream(remoteMediaStream.current.getTracks()));
     };
 
     pc.onicecandidate = (event) => {
       if (event.candidate && matchId) {
+        console.log("Local ICE candidate generated:", event.candidate.candidate);
         addIceCandidate({ matchId, candidate: JSON.stringify(event.candidate) });
       }
     };
 
+    pc.oniceconnectionstatechange = () => {
+      console.log("ICE connection state change:", pc.iceConnectionState);
+    };
+
+    pc.onconnectionstatechange = () => {
+      console.log("Connection state change:", pc.connectionState);
+    };
+
     if (isUser1) {
+      console.log("User 1: Creating offer SDP...");
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       if (matchId) {
@@ -326,65 +358,106 @@ export default function CallPage() {
     return () => clearInterval(interval);
   }, [match, profile, incrementCallTime, handleSkip, router]);
 
-  // 3. Handle WebRTC Signaling (SDP and ICE)
+  // 3. Handle WebRTC Signaling (SDP offer/answer exchange)
   useEffect(() => {
     if (!match || !profile || !pcInstance) return;
     const isUser1 = match.user1 === profile.userId;
     const pc = pcInstance;
 
-    const processQueue = async () => {
-      while (queuedCandidates.current.length > 0) {
-        const candidate = queuedCandidates.current.shift();
-        if (candidate) {
+    const addPendingCandidates = async () => {
+      if (!candidates) return;
+      for (const c of candidates) {
+        if (c.senderId !== profile.userId && !addedCandidates.current.has(c._id)) {
           try {
-            await pc.addIceCandidate(new RTCIceCandidate(candidate));
+            const candidateInit = JSON.parse(c.candidate);
+            await pc.addIceCandidate(new RTCIceCandidate(candidateInit));
+            addedCandidates.current.add(c._id);
+            console.log("Successfully added pending ICE candidate:", c._id);
           } catch (e) {
-            console.error("Error adding queued ice candidate:", e);
+            console.warn("Failed to add pending ICE candidate:", e);
           }
         }
       }
     };
 
     const handleSignaling = async () => {
-      if (!isUser1 && match.sdpOffer && pc.signalingState === "stable") {
-        await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(match.sdpOffer)));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        await setSDP({ matchId: match._id, type: "answer", sdp: JSON.stringify(answer) });
-        await processQueue();
+      if (!isUser1 && match.sdpOffer && !sdpOfferProcessed.current) {
+        try {
+          sdpOfferProcessed.current = true;
+          console.log("User 2: Setting remote offer SDP...");
+          await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(match.sdpOffer)));
+          console.log("User 2: Creating local answer SDP...");
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          console.log("User 2: Sending answer SDP...");
+          await setSDP({ matchId: match._id, type: "answer", sdp: JSON.stringify(answer) });
+          // Now that remote description is set, add any pending candidates immediately
+          await addPendingCandidates();
+        } catch (err) {
+          console.error("Error during User2 signaling setup:", err);
+          sdpOfferProcessed.current = false;
+        }
       }
 
-      if (isUser1 && match.sdpAnswer && pc.signalingState === "have-local-offer") {
-        await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(match.sdpAnswer)));
-        await processQueue();
+      if (isUser1 && match.sdpAnswer && !sdpAnswerProcessed.current) {
+        try {
+          sdpAnswerProcessed.current = true;
+          console.log("User 1: Setting remote answer SDP...");
+          await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(match.sdpAnswer)));
+          // Now that remote description is set, add any pending candidates immediately
+          await addPendingCandidates();
+        } catch (err) {
+          console.error("Error during User1 signaling setup:", err);
+          sdpAnswerProcessed.current = false;
+        }
       }
     };
 
     handleSignaling();
-  }, [match, profile, pcInstance, setSDP]);
+  }, [match, profile, pcInstance, setSDP, candidates]);
 
+  // 4. Handle incoming ICE candidates continuously as they arrive
   useEffect(() => {
     if (!candidates || !profile || !pcInstance) return;
     const pc = pcInstance;
 
     candidates.forEach(async (c) => {
-      if (c.senderId !== profile.userId) {
-        try {
-          const candidateInit = JSON.parse(c.candidate);
-          if (pc.remoteDescription && pc.remoteDescription.type) {
+      if (c.senderId !== profile.userId && !addedCandidates.current.has(c._id)) {
+        if (pc.remoteDescription && pc.remoteDescription.type) {
+          try {
+            const candidateInit = JSON.parse(c.candidate);
             await pc.addIceCandidate(new RTCIceCandidate(candidateInit));
-          } else {
-            // Queue candidate if remote description is not set yet
-            if (!queuedCandidates.current.some((q) => q.candidate === candidateInit.candidate)) {
-              queuedCandidates.current.push(candidateInit);
-            }
+            addedCandidates.current.add(c._id);
+            console.log("Successfully added inline ICE candidate:", c._id);
+          } catch (e) {
+            console.warn("Failed to add inline ICE candidate:", e);
           }
-        } catch (e) {
-          console.error("Error adding ice candidate", e);
         }
       }
     });
   }, [candidates, profile, pcInstance]);
+
+  // 5. Synchronize local video element srcObject with fallback/programmatic play
+  useEffect(() => {
+    if (localVideoRef.current && localStream) {
+      if (localVideoRef.current.srcObject !== localStream) {
+        console.log("Setting local video srcObject");
+        localVideoRef.current.srcObject = localStream;
+      }
+      localVideoRef.current.play().catch(err => console.warn("Local play blocked:", err));
+    }
+  }, [localStream, isVideoOff]);
+
+  // 6. Synchronize remote video element srcObject with fallback/programmatic play
+  useEffect(() => {
+    if (remoteVideoRef.current && remoteStream) {
+      if (remoteVideoRef.current.srcObject !== remoteStream) {
+        console.log("Setting remote video srcObject");
+        remoteVideoRef.current.srcObject = remoteStream;
+      }
+      remoteVideoRef.current.play().catch(err => console.warn("Remote play blocked:", err));
+    }
+  }, [remoteStream, peerVideoOff]);
 
   const toggleMute = () => {
     if (localStream && localStream.getAudioTracks().length > 0) {
@@ -450,7 +523,7 @@ export default function CallPage() {
           }
 
           // speaking peak amplitude threshold
-          const isSpeaking = maxVal > 15;
+          const isSpeaking = maxVal > 25;
 
           if (isSpeaking) {
             silenceCounter = 0;
@@ -526,19 +599,6 @@ export default function CallPage() {
     );
   }
 
-  const isUser1 = match?.user1 === profile.userId;
-  const myStatus = isUser1 ? match?.user1Status : match?.user2Status;
-  const isConnected = match?.status === "active";
-  const myDisplayName = isConnected ? `${isUser1 ? match?.user1Name : match?.user2Name}` : "You";
-  const peerDisplayName = isConnected ? `${isUser1 ? match?.user2Name : match?.user1Name}` : "Stranger";
-
-  const peerMuted = isConnected ? (isUser1 ? match?.user2Muted : match?.user1Muted) : false;
-  const peerVideoOff = isConnected ? (isUser1 ? match?.user2VideoOff : match?.user1VideoOff) : false;
-  const peerSpeaking = isConnected ? (isUser1 ? match?.user2Speaking : match?.user1Speaking) : false;
-
-  const myMuted = isMuted;
-  const myVideoOff = isVideoOff;
-  const mySpeaking = isConnected ? (isUser1 ? match?.user1Speaking : match?.user2Speaking) : false;
 
   return (
     <div className={styles.container}>
