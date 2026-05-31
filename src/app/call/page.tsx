@@ -38,6 +38,8 @@ export default function CallPage() {
   const [showMicMenu, setShowMicMenu] = useState(false);
   const [showCamMenu, setShowCamMenu] = useState(false);
   
+  const queuedCandidates = useRef<RTCIceCandidateInit[]>([]);
+  
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const peerConnection = useRef<RTCPeerConnection | null>(null);
@@ -319,16 +321,31 @@ export default function CallPage() {
     const isUser1 = match.user1 === profile.userId;
     const pc = peerConnection.current;
 
+    const processQueue = async () => {
+      while (queuedCandidates.current.length > 0) {
+        const candidate = queuedCandidates.current.shift();
+        if (candidate) {
+          try {
+            await pc.addIceCandidate(new RTCIceCandidate(candidate));
+          } catch (e) {
+            console.error("Error adding queued ice candidate:", e);
+          }
+        }
+      }
+    };
+
     const handleSignaling = async () => {
       if (!isUser1 && match.sdpOffer && pc.signalingState === "stable") {
         await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(match.sdpOffer)));
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         await setSDP({ matchId: match._id, type: "answer", sdp: JSON.stringify(answer) });
+        await processQueue();
       }
 
       if (isUser1 && match.sdpAnswer && pc.signalingState === "have-local-offer") {
         await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(match.sdpAnswer)));
+        await processQueue();
       }
     };
 
@@ -342,7 +359,15 @@ export default function CallPage() {
     candidates.forEach(async (c) => {
       if (c.senderId !== profile.userId) {
         try {
-          await pc.addIceCandidate(new RTCIceCandidate(JSON.parse(c.candidate)));
+          const candidateInit = JSON.parse(c.candidate);
+          if (pc.remoteDescription && pc.remoteDescription.type) {
+            await pc.addIceCandidate(new RTCIceCandidate(candidateInit));
+          } else {
+            // Queue candidate if remote description is not set yet
+            if (!queuedCandidates.current.some((q) => q.candidate === candidateInit.candidate)) {
+              queuedCandidates.current.push(candidateInit);
+            }
+          }
         } catch (e) {
           console.error("Error adding ice candidate", e);
         }
@@ -406,6 +431,9 @@ export default function CallPage() {
 
   const isUser1 = match?.user1 === profile.userId;
   const myStatus = isUser1 ? match?.user1Status : match?.user2Status;
+  const isConnected = match?.status === "active";
+  const myDisplayName = isConnected ? `${isUser1 ? match?.user1Name : match?.user2Name}` : "You";
+  const peerDisplayName = isConnected ? `${isUser1 ? match?.user2Name : match?.user1Name}` : "Stranger";
 
   return (
     <div className={styles.container}>
@@ -418,7 +446,7 @@ export default function CallPage() {
       <div className={styles.videoGrid}>
         <div className={styles.videoContainer}>
           <video ref={localVideoRef} autoPlay playsInline muted className={styles.video} />
-          <div className={styles.videoLabel}>You</div>
+          <div className={styles.videoLabel}>{myDisplayName}</div>
         </div>
         
         <div className={styles.videoContainer}>
@@ -430,7 +458,7 @@ export default function CallPage() {
               {match?.status === "connecting" && <p>Found someone! Connecting call...</p>}
             </div>
           )}
-          <div className={styles.videoLabel}>Stranger</div>
+          <div className={styles.videoLabel}>{peerDisplayName}</div>
         </div>
       </div>
 

@@ -71,7 +71,22 @@ export const getMatch = query({
   handler: async (ctx, args) => {
     const userId = await auth.getUserId(ctx);
     if (!userId) return null;
-    return await ctx.db.get(args.matchId);
+    
+    const match = await ctx.db.get(args.matchId);
+    if (!match) return null;
+
+    // Fetch matched user names
+    const user1User = await ctx.db.get(match.user1);
+    let user2User = null;
+    if (match.user2) {
+      user2User = await ctx.db.get(match.user2);
+    }
+
+    return {
+      ...match,
+      user1Name: user1User?.name || user1User?.email?.split("@")[0] || "Stranger",
+      user2Name: user2User?.name || user2User?.email?.split("@")[0] || "Stranger",
+    };
   },
 });
 

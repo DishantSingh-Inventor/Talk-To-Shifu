@@ -18,8 +18,112 @@
 
 @media (max-width: 768px) {
   .videoGrid {
+    position: relative;
     grid-template-columns: 1fr;
-    grid-template-rows: 1fr 1fr;
+    grid-template-rows: 1fr;
+    height: calc(100vh - 80px);
+    padding: 0;
+    gap: 0;
+  }
+
+  /* User's own floating Picture-in-Picture local preview */
+  .videoGrid > .videoContainer:nth-child(1) {
+    position: absolute;
+    bottom: 96px;
+    right: 16px;
+    width: 110px;
+    height: 160px;
+    border-radius: 12px;
+    border: 2px solid rgba(255, 255, 255, 0.4);
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5);
+    z-index: 10;
+    overflow: hidden;
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .videoGrid > .videoContainer:nth-child(1):hover {
+    transform: scale(1.05);
+    border-color: rgba(255, 255, 255, 0.8);
+  }
+
+  /* Stranger's full-screen remote video container */
+  .videoGrid > .videoContainer:nth-child(2) {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 0;
+    z-index: 1;
+    border: none;
+    box-shadow: none;
+  }
+
+  .videoLabel {
+    bottom: 0.5rem;
+    left: 0.5rem;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.725rem;
+    border-radius: 0.25rem;
+  }
+
+  /* Floating controls capsule at the bottom center */
+  .controls {
+    position: absolute;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: calc(100% - 32px);
+    max-width: 480px;
+    border-radius: 9999px;
+    background: rgba(15, 23, 42, 0.75) !important;
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+    padding: 0.75rem 1rem;
+    gap: 0.5rem;
+    z-index: 20;
+    justify-content: center;
+  }
+
+  /* Resized and optimized buttons on mobile to avoid overflow */
+  .controlBtn, .controlBtnAction, .controlBtnEnd {
+    width: 46px !important;
+    height: 46px !important;
+  }
+
+  .controlWrapper {
+    border-radius: 23px;
+  }
+
+  .controlWrapper .controlBtn {
+    width: 40px !important;
+    height: 44px !important;
+    border-radius: 23px 0 0 23px;
+  }
+
+  .moreBtn {
+    width: 22px !important;
+    height: 44px !important;
+    border-radius: 0 23px 23px 0;
+    padding: 0 4px 0 2px;
+  }
+
+  .controlBtnSkip {
+    height: 46px !important;
+    padding: 0 1rem;
+    font-size: 0.825rem;
+    border-radius: 9999px;
+  }
+
+  .controlBtnEnd {
+    width: 46px !important;
+    height: 46px !important;
+  }
+
+  .deviceMenu {
+    bottom: 58px;
+    width: 200px;
   }
 }
 
