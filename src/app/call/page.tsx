@@ -38,6 +38,7 @@ export default function CallPage() {
   const [selectedVideoId, setSelectedVideoId] = useState<string>("");
   const [showMicMenu, setShowMicMenu] = useState(false);
   const [showCamMenu, setShowCamMenu] = useState(false);
+  const [pcInstance, setPcInstance] = useState<RTCPeerConnection | null>(null);
   
   const queuedCandidates = useRef<RTCIceCandidateInit[]>([]);
   
@@ -59,6 +60,7 @@ export default function CallPage() {
     hasStartedCall.current = false;
     setRemoteStream(null);
     remoteMediaStream.current = null;
+    setPcInstance(null);
     if (peerConnection.current) {
       peerConnection.current.close();
       peerConnection.current = null;
@@ -161,6 +163,7 @@ export default function CallPage() {
     });
 
     peerConnection.current = pc;
+    setPcInstance(pc);
 
     localStream?.getTracks().forEach(track => pc.addTrack(track, localStream));
 
@@ -325,9 +328,9 @@ export default function CallPage() {
 
   // 3. Handle WebRTC Signaling (SDP and ICE)
   useEffect(() => {
-    if (!match || !profile || !peerConnection.current) return;
+    if (!match || !profile || !pcInstance) return;
     const isUser1 = match.user1 === profile.userId;
-    const pc = peerConnection.current;
+    const pc = pcInstance;
 
     const processQueue = async () => {
       while (queuedCandidates.current.length > 0) {
@@ -358,11 +361,11 @@ export default function CallPage() {
     };
 
     handleSignaling();
-  }, [match, profile, setSDP]);
+  }, [match, profile, pcInstance, setSDP]);
 
   useEffect(() => {
-    if (!candidates || !profile || !peerConnection.current) return;
-    const pc = peerConnection.current;
+    if (!candidates || !profile || !pcInstance) return;
+    const pc = pcInstance;
 
     candidates.forEach(async (c) => {
       if (c.senderId !== profile.userId) {
@@ -381,7 +384,7 @@ export default function CallPage() {
         }
       }
     });
-  }, [candidates, profile]);
+  }, [candidates, profile, pcInstance]);
 
   const toggleMute = () => {
     if (localStream && localStream.getAudioTracks().length > 0) {
@@ -405,7 +408,7 @@ export default function CallPage() {
     }
   };
 
-  // Speaking detection using Web Audio API
+  // Speaking detection using Web Audio API (PCM Time Domain Peak amplitude)
   useEffect(() => {
     if (!localStream || isMuted || !matchId) {
       if (matchId) {
@@ -435,16 +438,19 @@ export default function CallPage() {
 
         const checkVolume = () => {
           if (!analyser) return;
-          analyser.getByteFrequencyData(dataArray);
+          analyser.getByteTimeDomainData(dataArray);
 
-          let sum = 0;
+          // Find maximum deviation from silence center (128 in 8-bit unsigned PCM)
+          let maxVal = 0;
           for (let i = 0; i < bufferLength; i++) {
-            sum += dataArray[i];
+            const val = Math.abs(dataArray[i] - 128);
+            if (val > maxVal) {
+              maxVal = val;
+            }
           }
-          const average = sum / bufferLength;
 
-          // Speaking threshold
-          const isSpeaking = average > 12;
+          // speaking peak amplitude threshold
+          const isSpeaking = maxVal > 15;
 
           if (isSpeaking) {
             silenceCounter = 0;
@@ -454,7 +460,7 @@ export default function CallPage() {
             }
           } else {
             silenceCounter++;
-            if (silenceCounter > 20) { // require a short silence window to prevent flickering
+            if (silenceCounter > 20) { // require 20 frames of silence to avoid flickering
               if (lastSpeakingState) {
                 lastSpeakingState = false;
                 updateMediaStatus({ matchId, speaking: false });
