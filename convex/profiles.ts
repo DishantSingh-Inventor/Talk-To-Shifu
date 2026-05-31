@@ -7,10 +7,37 @@ export const getProfile = query({
   handler: async (ctx) => {
     const userId = await auth.getUserId(ctx);
     if (!userId) return null;
-    return await ctx.db
+    const profile = await ctx.db
       .query("profiles")
       .withIndex("by_user", (q) => q.eq("userId", userId))
       .first();
+    
+    const user = await ctx.db.get(userId);
+    
+    if (!profile) {
+      return {
+        userId,
+        name: user?.name || user?.email?.split("@")[0] || "",
+        email: user?.email || "",
+        subscriptionTier: "free" as const,
+        dailyCallTimeSeconds: 0,
+        lastCallDate: "",
+        nativeLanguage: "",
+        learningLanguage: "",
+        ageGroup: "",
+        interests: [] as string[],
+        game: "",
+        topics: [] as string[],
+        debateTopic: "",
+        politicsTopic: "",
+      };
+    }
+
+    return {
+      ...profile,
+      name: user?.name || user?.email?.split("@")[0] || "",
+      email: user?.email || "",
+    };
   },
 });
 
@@ -104,4 +131,13 @@ export const incrementCallTime = mutation({
 
     return { allowed: true };
   }
+});
+
+export const updateName = mutation({
+  args: { name: v.string() },
+  handler: async (ctx, args) => {
+    const userId = await auth.getUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+    await ctx.db.patch(userId, { name: args.name });
+  },
 });
