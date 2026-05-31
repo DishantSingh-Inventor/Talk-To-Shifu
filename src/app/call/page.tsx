@@ -226,15 +226,16 @@ export default function CallPage() {
     }
   }, [localStream, matchId, addIceCandidate, setSDP]);
 
-  // 1. Get user media and find a match
+  // 1. Get user media once on mount
   useEffect(() => {
-    let stream: MediaStream | null = null;
+    let activeStream: MediaStream | null = null;
     
-    const init = async () => {
+    const initMedia = async () => {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        console.log("Requesting camera and microphone access...");
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        activeStream = stream;
         setLocalStream(stream);
-        if (localVideoRef.current) localVideoRef.current.srcObject = stream;
         
         // Enumerate devices once stream is initialized
         const devices = await navigator.mediaDevices.enumerateDevices();
@@ -244,66 +245,77 @@ export default function CallPage() {
         setVideoDevices(videos);
         if (audios.length > 0) setSelectedAudioId(audios[0].deviceId);
         if (videos.length > 0) setSelectedVideoId(videos[0].deviceId);
-
-        // Find match if profile is loaded
-        if (profile) {
-          const mId = await findMatch();
-          setMatchId(mId);
-        }
       } catch (e: any) {
-        console.warn("Media access warning or match error:", e);
-        if (e.message?.includes("DAILY_LIMIT_REACHED")) {
-          setMediaError("You have reached your daily call limit. Please upgrade your subscription to continue calling non-friends.");
-          return;
-        }
+        console.warn("Media access warning or fallback triggered:", e);
 
-        // If video not available, fallback to audio only
-        if (e instanceof DOMException && e.name === "NotReadableError") {
-          try {
-            const audioStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
-            setLocalStream(audioStream);
-            if (localVideoRef.current) localVideoRef.current.srcObject = audioStream;
-            setIsVideoOff(true);
-            
-            // Enumerate devices for audio fallback
-            const devices = await navigator.mediaDevices.enumerateDevices();
-            const audios = devices.filter((d) => d.kind === "audioinput");
-            setAudioDevices(audios);
-            if (audios.length > 0) setSelectedAudioId(audios[0].deviceId);
-
-            // Proceed with matching using audio only
-            if (profile) {
-              const mId = await findMatch();
-              setMatchId(mId);
-            }
-          } catch (audioErr: any) {
-            console.warn("Audio fallback failed:", audioErr);
-            if (audioErr.message?.includes("DAILY_LIMIT_REACHED")) {
-              setMediaError("You have reached your daily call limit. Please upgrade your subscription to continue calling non-friends.");
-            } else if (audioErr instanceof DOMException) {
-              setMediaError("Camera and microphone access is required. Please allow permissions and retry.");
-            } else {
-              setMediaError(`Backend Error: ${audioErr.message || audioErr}`);
-            }
+        // If video not available or blocked, fallback to audio only
+        try {
+          console.log("Attempting audio-only fallback...");
+          const audioStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
+          activeStream = audioStream;
+          setLocalStream(audioStream);
+          setIsVideoOff(true);
+          
+          // Enumerate devices for audio fallback
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const audios = devices.filter((d) => d.kind === "audioinput");
+          setAudioDevices(audios);
+          if (audios.length > 0) setSelectedAudioId(audios[0].deviceId);
+        } catch (audioErr: any) {
+          console.error("Audio fallback failed:", audioErr);
+          if (audioErr.message?.includes("DAILY_LIMIT_REACHED")) {
+            setMediaError("You have reached your daily call limit. Please upgrade your subscription to continue calling non-friends.");
+          } else {
+            setMediaError("Camera and microphone access is required. Please allow permissions and retry.");
           }
-        } else if (e instanceof DOMException) {
-          setMediaError("Camera and microphone access is required. Please allow permissions and retry.");
-        } else {
-          setMediaError(`Backend Error: ${e.message || e}`);
         }
       }
     };
     
-    if (profile && !matchId) {
-      init();
+    if (profile && !localStream && !mediaError) {
+      initMedia();
     }
     
     return () => {
-      if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
+      if (activeStream) {
+        console.log("Stopping all tracks of active local stream...");
+        activeStream.getTracks().forEach((track) => track.stop());
       }
     };
-  }, [profile, matchId, findMatch]);
+  }, [profile, localStream, mediaError]);
+
+  // 2. Perform matchmaking automatically when local stream is ready and matchId is empty
+  useEffect(() => {
+    if (!profile || !localStream || matchId || mediaError) return;
+
+    let isSubscribed = true;
+
+    const startMatching = async () => {
+      try {
+        console.log("Searching for a new match on Convex...");
+        const mId = await findMatch();
+        if (isSubscribed) {
+          console.log("Match successfully found with ID:", mId);
+          setMatchId(mId);
+        }
+      } catch (err: any) {
+        console.error("Matchmaking error:", err);
+        if (isSubscribed) {
+          if (err.message?.includes("DAILY_LIMIT_REACHED")) {
+            setMediaError("You have reached your daily call limit. Please upgrade your subscription to continue calling non-friends.");
+          } else {
+            setMediaError(`Backend Error: ${err.message || err}`);
+          }
+        }
+      }
+    };
+
+    startMatching();
+
+    return () => {
+      isSubscribed = false;
+    };
+  }, [profile, localStream, matchId, findMatch, mediaError]);
 
   // 2. Handle connection acceptance and WebRTC setup
   useEffect(() => {
