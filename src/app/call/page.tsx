@@ -205,13 +205,18 @@ export default function CallPage() {
 
     pc.ontrack = (event) => {
       console.log("Remote track received:", event.track.kind);
-      if (!remoteMediaStream.current) {
-        remoteMediaStream.current = new MediaStream();
+      if (event.streams && event.streams[0]) {
+        console.log("Setting remote stream from event.streams[0]");
+        setRemoteStream(event.streams[0]);
+      } else {
+        console.log("No streams found on event, reconstructing remoteMediaStream...");
+        if (!remoteMediaStream.current) {
+          remoteMediaStream.current = new MediaStream();
+        }
+        remoteMediaStream.current.addTrack(event.track);
+        // Force React state update with a new MediaStream reference so UI re-renders
+        setRemoteStream(new MediaStream(remoteMediaStream.current.getTracks()));
       }
-      remoteMediaStream.current.addTrack(event.track);
-      
-      // Force React state update with a new MediaStream reference so UI re-renders
-      setRemoteStream(new MediaStream(remoteMediaStream.current.getTracks()));
     };
 
     pc.onicecandidate = (event) => {
