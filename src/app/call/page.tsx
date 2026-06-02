@@ -177,9 +177,22 @@ export default function CallPage() {
   };
 
   const setupWebRTC = useCallback(async (isUser1: boolean) => {
-    console.log("Initializing RTCPeerConnection...");
+    console.log("Initializing RTCPeerConnection with STUN & TURN servers...");
     const pc = new RTCPeerConnection({
-      iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+      iceServers: [
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:openrelay.metered.ca:80" },
+        {
+          urls: "turn:openrelay.metered.ca:80",
+          username: "openrelayproject",
+          credential: "openrelayproject",
+        },
+        {
+          urls: "turn:openrelay.metered.ca:443",
+          username: "openrelayproject",
+          credential: "openrelayproject",
+        },
+      ]
     });
 
     peerConnection.current = pc;
