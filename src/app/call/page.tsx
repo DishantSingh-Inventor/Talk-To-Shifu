@@ -178,47 +178,53 @@ export default function CallPage() {
   };
 
   const setupWebRTC = useCallback(async (isUser1: boolean) => {
-    console.log("Initializing RTCPeerConnection with STUN & TURN servers...");
-    const turnUrl = process.env.NEXT_PUBLIC_TURN_URL || "global.relay.metered.ca";
-    const turnUsername = process.env.NEXT_PUBLIC_TURN_USERNAME || "b62a85eb17b26cab93732ced";
-    const turnCredential = process.env.NEXT_PUBLIC_TURN_CREDENTIAL || "7yfLHjK6mdNw0UMq";
-
-    const iceServers: RTCIceServer[] = [
+    console.log("Initializing RTCPeerConnection with dynamic TURN credentials...");
+    let iceServers: RTCIceServer[] = [
       { urls: "stun:stun.l.google.com:19302" }
     ];
 
-    if (turnUrl.includes(":") && (turnUrl.startsWith("turn:") || turnUrl.startsWith("turns:"))) {
-      console.log("Custom TURN server configured via environment variables.");
-      iceServers.push({
-        urls: turnUrl,
-        username: turnUsername,
-        credential: turnCredential
-      });
-    } else {
-      console.log("Defaulting to Metered global TURN relay servers.");
-      iceServers.push(
-        { urls: `stun:${turnUrl}:80` },
-        {
-          urls: `turn:${turnUrl}:80`,
-          username: turnUsername,
-          credential: turnCredential,
-        },
-        {
-          urls: `turn:${turnUrl}:443`,
-          username: turnUsername,
-          credential: turnCredential,
-        },
-        {
-          urls: `turn:${turnUrl}:443?transport=tcp`,
-          username: turnUsername,
-          credential: turnCredential,
-        },
-        {
-          urls: `turns:${turnUrl}:443?transport=tcp`,
-          username: turnUsername,
-          credential: turnCredential,
+    const apiKey = process.env.NEXT_PUBLIC_METERED_API_KEY || "07f27db9442b6317eefa05586161d382d733";
+    const domain = process.env.NEXT_PUBLIC_METERED_DOMAIN || "talk-to-shifu.metered.live";
+
+    try {
+      console.log("Fetching dynamic TURN credentials from Metered API...");
+      const res = await fetch(`https://${domain}/api/v1/turn/credentials?apiKey=${apiKey}`);
+      if (res.ok) {
+        const fetchedIceServers = await res.json();
+        if (Array.isArray(fetchedIceServers) && fetchedIceServers.length > 0) {
+          iceServers = fetchedIceServers;
+          console.log("Successfully fetched dynamic TURN credentials.");
+        } else {
+          throw new Error("Invalid format returned by Metered API.");
         }
-      );
+      } else {
+        throw new Error(`Metered API returned status ${res.status}`);
+      }
+    } catch (err) {
+      console.warn("Failed to fetch dynamic TURN credentials, falling back to static:", err);
+      iceServers = [
+        { urls: "stun:stun.relay.metered.ca:80" },
+        {
+          urls: "turn:global.relay.metered.ca:80",
+          username: "b62a85eb17b26cab93732ced",
+          credential: "7yfLHjK6mdNw0UMq",
+        },
+        {
+          urls: "turn:global.relay.metered.ca:80?transport=tcp",
+          username: "b62a85eb17b26cab93732ced",
+          credential: "7yfLHjK6mdNw0UMq",
+        },
+        {
+          urls: "turn:global.relay.metered.ca:443",
+          username: "b62a85eb17b26cab93732ced",
+          credential: "7yfLHjK6mdNw0UMq",
+        },
+        {
+          urls: "turns:global.relay.metered.ca:443?transport=tcp",
+          username: "b62a85eb17b26cab93732ced",
+          credential: "7yfLHjK6mdNw0UMq",
+        }
+      ];
     }
 
     const pc = new RTCPeerConnection({ iceServers });
