@@ -204,10 +204,11 @@ export default function CallPage() {
     });
 
     pc.ontrack = (event) => {
-      console.log("Remote track received:", event.track.kind);
+      console.log("Remote track received:", event.track.kind, "Streams:", event.streams.map(s => s.id));
       if (event.streams && event.streams[0]) {
-        console.log("Setting remote stream from event.streams[0]");
-        setRemoteStream(event.streams[0]);
+        console.log("Setting remote stream from event.streams[0] (wrapping in a new MediaStream instance to trigger React state updates)...");
+        // Always wrap in a new MediaStream instance so the reference changes and React updates the video source
+        setRemoteStream(new MediaStream(event.streams[0].getTracks()));
       } else {
         console.log("No streams found on event, reconstructing remoteMediaStream...");
         if (!remoteMediaStream.current) {
@@ -223,11 +224,16 @@ export default function CallPage() {
       if (event.candidate && matchId) {
         console.log("Local ICE candidate generated:", event.candidate.candidate);
         addIceCandidate({ matchId, candidate: JSON.stringify(event.candidate) });
+      } else if (!event.candidate) {
+        console.log("Local ICE candidate gathering completed.");
       }
     };
 
     pc.oniceconnectionstatechange = () => {
       console.log("ICE connection state change:", pc.iceConnectionState);
+      if (pc.iceConnectionState === "failed") {
+        console.warn("ICE connection failed! This usually means NAT traversal failed and a TURN server is required.");
+      }
     };
 
     pc.onconnectionstatechange = () => {
@@ -456,12 +462,15 @@ export default function CallPage() {
         if (pc.remoteDescription && pc.remoteDescription.type) {
           try {
             const candidateInit = JSON.parse(c.candidate);
+            console.log("Adding inline ICE candidate:", candidateInit.candidate);
             await pc.addIceCandidate(new RTCIceCandidate(candidateInit));
             addedCandidates.current.add(c._id);
             console.log("Successfully added inline ICE candidate:", c._id);
           } catch (e) {
             console.warn("Failed to add inline ICE candidate:", e);
           }
+        } else {
+          console.log("Skipping inline ICE candidate (remoteDescription not set yet):", c._id);
         }
       }
     });
