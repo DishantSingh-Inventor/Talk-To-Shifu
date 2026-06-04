@@ -290,8 +290,15 @@ export default function CallPage() {
     
     const initMedia = async () => {
       try {
-        console.log("Requesting camera and microphone access...");
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        console.log("Requesting camera and microphone access with optimized constraints (480p, 15fps)...");
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: { ideal: 640, max: 800 },
+            height: { ideal: 480, max: 600 },
+            frameRate: { ideal: 15, max: 20 }
+          },
+          audio: true
+        });
         activeStream = stream;
         setLocalStream(stream);
         
@@ -540,6 +547,28 @@ export default function CallPage() {
         });
     }
   }, [remoteStream, peerVideoOff]);
+
+  // 7. Save bandwidth dynamically by pausing/disabling video tracks when the tab is hidden
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!localStream) return;
+      const isHidden = document.visibilityState === "hidden";
+      console.log("Tab visibility changed. Hidden:", isHidden);
+
+      localStream.getVideoTracks().forEach(track => {
+        track.enabled = !isHidden && !isVideoOff;
+      });
+
+      if (matchId) {
+        updateMediaStatus({ matchId, videoOff: isHidden || isVideoOff });
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [localStream, isVideoOff, matchId, updateMediaStatus]);
 
   const handleUnblockAutoplay = () => {
     if (remoteVideoRef.current) {
