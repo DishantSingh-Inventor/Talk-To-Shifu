@@ -5,8 +5,10 @@ import { api } from "../../../convex/_generated/api";
 import { useEffect, useState, useRef, useCallback } from "react";
 import { Id } from "../../../convex/_generated/dataModel";
 import styles from "./call.module.css";
-import { Video, VideoOff, Mic, MicOff, PhoneOff, AlertTriangle, UserPlus, SkipForward, Check, X, MoreVertical } from "lucide-react";
+import { Video, VideoOff, Mic, MicOff, PhoneOff, AlertTriangle, UserPlus, SkipForward, Check, X, MoreVertical, MessageSquare, Send } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useCallChat } from "./hooks/useCallChat";
+import { useWebRTCStats } from "./hooks/useWebRTCStats";
 
 export default function CallPage() {
   const router = useRouter();
@@ -65,6 +67,53 @@ export default function CallPage() {
   const sdpOfferProcessed = useRef(false);
   const sdpAnswerProcessed = useRef(false);
 
+  // Hook integrations
+  const {
+    showChat,
+    setShowChat,
+    unreadCount,
+    messages,
+    chatMessage,
+    isChatReady,
+    isPeerTyping,
+    sendMessage,
+    handleTyping,
+    setupDataChannel,
+    clearChat,
+  } = useCallChat();
+
+  const { connectionQuality } = useWebRTCStats(pcInstance);
+
+  const chatMessagesRef = useRef<HTMLDivElement>(null);
+  const [showScrollBanner, setShowScrollBanner] = useState(false);
+
+  const scrollToBottom = useCallback((force = false) => {
+    const container = chatMessagesRef.current;
+    if (!container) return;
+
+    const threshold = 100; // pixels from bottom
+    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+
+    if (force || isNearBottom) {
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: "smooth",
+      });
+      setShowScrollBanner(false);
+    } else {
+      setShowScrollBanner(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    scrollToBottom(false);
+  }, [messages, isPeerTyping, scrollToBottom]);
+
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    sendMessage();
+  };
+
   const handleAction = useCallback(async (action: "accept" | "decline" | "end") => {
     if (matchId) {
       await updateMatchStatus({ matchId, action });
@@ -81,11 +130,12 @@ export default function CallPage() {
     addedCandidates.current.clear();
     sdpOfferProcessed.current = false;
     sdpAnswerProcessed.current = false;
+    clearChat();
     if (peerConnection.current) {
       peerConnection.current.close();
       peerConnection.current = null;
     }
-  }, [matchId, handleAction]);
+  }, [matchId, handleAction, clearChat]);
 
   // Refresh and list all available media devices
   const refreshDevices = useCallback(async () => {
@@ -274,7 +324,16 @@ export default function CallPage() {
       console.log("Connection state change:", pc.connectionState);
     };
 
+    pc.ondatachannel = (event) => {
+      console.log("User 2: Received data channel 'chat'");
+      setupDataChannel(event.channel);
+    };
+
     if (isUser1) {
+      console.log("User 1: Creating data channel 'chat'...");
+      const dc = pc.createDataChannel("chat");
+      setupDataChannel(dc);
+
       console.log("User 1: Creating offer SDP...");
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
@@ -282,7 +341,7 @@ export default function CallPage() {
         await setSDP({ matchId, type: "offer", sdp: JSON.stringify(offer) });
       }
     }
-  }, [localStream, matchId, addIceCandidate, setSDP]);
+  }, [localStream, matchId, addIceCandidate, setSDP, setupDataChannel]);
 
   // 1. Get user media once on mount
   useEffect(() => {
@@ -727,64 +786,149 @@ export default function CallPage() {
 
   return (
     <div className={styles.container}>
+      <div className={styles.topHeader}>
+        <div className={styles.logo}>Talk-To-Shifu</div>
+        {isConnected && (
+          <div className={`${styles.statusBadge} ${styles[connectionQuality.toLowerCase()]}`}>
+            <span className={styles.statusDot}></span>
+            Connection: {connectionQuality}
+          </div>
+        )}
+      </div>
+
       {showAd && (
         <div className={styles.adBanner}>
           <p>Advertisement: Support us or Upgrade to Pro to remove ads and get more calling time!</p>
           <button className={styles.adUpgradeBtn} onClick={() => router.push("/pricing")}>Upgrade Now</button>
         </div>
       )}
-      <div className={styles.videoGrid}>
-        {/* Local Video Container */}
-        <div className={`${styles.videoContainer} ${mySpeaking ? styles.speakingActive : ""}`}>
-          {myVideoOff || !localStream || localStream.getVideoTracks().length === 0 ? (
-            <div className={styles.avatarPlaceholderContainer}>
-              <div className={`${styles.avatarBig} ${mySpeaking ? styles.speakingPulse : ""}`}>
-                {myDisplayName.substring(0, 2).toUpperCase()}
-              </div>
-              {mySpeaking && (
-                <div className={styles.speakingWave}>
-                  <span></span>
-                  <span></span>
-                  <span></span>
+
+      <div className={styles.workspace}>
+        <div className={styles.videoGrid}>
+          {/* Local Video Container */}
+          <div className={`${styles.videoContainer} ${mySpeaking ? styles.speakingActive : ""}`}>
+            {myVideoOff || !localStream || localStream.getVideoTracks().length === 0 ? (
+              <div className={styles.avatarPlaceholderContainer}>
+                <div className={`${styles.avatarBig} ${mySpeaking ? styles.speakingPulse : ""}`}>
+                  {myDisplayName.substring(0, 2).toUpperCase()}
                 </div>
-              )}
-              <p className={styles.placeholderText}>Camera is off</p>
+                {mySpeaking && (
+                  <div className={styles.speakingWave}>
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </div>
+                )}
+                <p className={styles.placeholderText}>Camera is off</p>
+              </div>
+            ) : (
+              <video ref={localVideoRef} autoPlay playsInline muted className={styles.video} />
+            )}
+            <div className={styles.videoLabel}>
+              {myDisplayName}
+              {myMuted && <MicOff size={14} className={styles.mutedBadge} />}
             </div>
-          ) : (
-            <video ref={localVideoRef} autoPlay playsInline muted className={styles.video} />
-          )}
-          <div className={styles.videoLabel}>
-            {myDisplayName}
-            {myMuted && <MicOff size={14} className={styles.mutedBadge} />}
+          </div>
+          
+          {/* Stranger Video Container */}
+          <div className={`${styles.videoContainer} ${peerSpeaking ? styles.speakingActive : ""}`}>
+            {peerVideoOff || !remoteStream || remoteStream.getVideoTracks().length === 0 ? (
+              <div className={styles.avatarPlaceholderContainer}>
+                <div className={`${styles.avatarBig} ${peerSpeaking ? styles.speakingPulse : ""}`}>
+                  {peerDisplayName.substring(0, 2).toUpperCase()}
+                </div>
+                {peerSpeaking && (
+                  <div className={styles.speakingWave}>
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </div>
+                )}
+                {(!remoteStream && match?.status === "waiting") && <p className={styles.placeholderText}>Finding someone...</p>}
+                {(!remoteStream && match?.status === "connecting") && <p className={styles.placeholderText}>Found someone! Connecting call...</p>}
+                {(remoteStream && (peerVideoOff || remoteStream.getVideoTracks().length === 0)) && <p className={styles.placeholderText}>Camera is turned off</p>}
+              </div>
+            ) : (
+              <video ref={remoteVideoRef} autoPlay playsInline className={styles.video} />
+            )}
+            <div className={styles.videoLabel}>
+              {peerDisplayName}
+              {peerMuted && <MicOff size={14} className={styles.mutedBadge} />}
+            </div>
           </div>
         </div>
-        
-        {/* Stranger Video Container */}
-        <div className={`${styles.videoContainer} ${peerSpeaking ? styles.speakingActive : ""}`}>
-          {peerVideoOff || !remoteStream || remoteStream.getVideoTracks().length === 0 ? (
-            <div className={styles.avatarPlaceholderContainer}>
-              <div className={`${styles.avatarBig} ${peerSpeaking ? styles.speakingPulse : ""}`}>
-                {peerDisplayName.substring(0, 2).toUpperCase()}
-              </div>
-              {peerSpeaking && (
-                <div className={styles.speakingWave}>
+
+        {showChat && (
+          <div className={styles.chatDrawer}>
+            <div className={styles.chatHeader}>
+              <h3>Chat with Stranger</h3>
+              <button className={styles.chatCloseBtn} onClick={() => setShowChat(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className={styles.chatMessages} ref={chatMessagesRef}>
+              {messages.length === 0 ? (
+                <div className={styles.chatEmptyState}>
+                  No messages yet. Say hello!
+                </div>
+              ) : (
+                messages.map((msg, index) => (
+                  <div
+                    key={index}
+                    className={`${styles.messageWrapper} ${
+                      msg.sender === "me" ? styles.messageMe : styles.messagePeer
+                    }`}
+                  >
+                    <div className={styles.messageBubble}>
+                      {msg.text}
+                    </div>
+                    <span className={styles.messageTime}>
+                      {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                ))
+              )}
+              {isPeerTyping && (
+                <div className={styles.typingIndicator}>
                   <span></span>
                   <span></span>
                   <span></span>
+                  <p>Stranger is typing...</p>
                 </div>
               )}
-              {(!remoteStream && match?.status === "waiting") && <p className={styles.placeholderText}>Finding someone...</p>}
-              {(!remoteStream && match?.status === "connecting") && <p className={styles.placeholderText}>Found someone! Connecting call...</p>}
-              {(remoteStream && (peerVideoOff || remoteStream.getVideoTracks().length === 0)) && <p className={styles.placeholderText}>Camera is turned off</p>}
+              
+              {showScrollBanner && (
+                <button
+                  type="button"
+                  className={styles.scrollBanner}
+                  onClick={() => scrollToBottom(true)}
+                >
+                  New messages ↓
+                </button>
+              )}
             </div>
-          ) : (
-            <video ref={remoteVideoRef} autoPlay playsInline className={styles.video} />
-          )}
-          <div className={styles.videoLabel}>
-            {peerDisplayName}
-            {peerMuted && <MicOff size={14} className={styles.mutedBadge} />}
+
+            <form onSubmit={handleFormSubmit} className={styles.chatInputForm}>
+              <input
+                type="text"
+                value={chatMessage}
+                onChange={(e) => handleTyping(e.target.value)}
+                placeholder={isChatReady ? "Type a message..." : "Waiting for connection..."}
+                disabled={!isChatReady}
+                maxLength={500}
+                className={styles.chatInput}
+              />
+              <button
+                type="submit"
+                disabled={!isChatReady || !chatMessage.trim()}
+                className={styles.chatSendBtn}
+              >
+                <Send size={18} />
+              </button>
+            </form>
           </div>
-        </div>
+        )}
       </div>
 
       {isAutoplayBlocked && (
@@ -879,6 +1023,20 @@ export default function CallPage() {
             </div>
           )}
         </div>
+
+        {/* Chat toggle button */}
+        <button
+          className={`${styles.controlBtnAction} ${showChat ? styles.controlBtnActive : ""}`}
+          title="Toggle Chat"
+          onClick={() => setShowChat(!showChat)}
+        >
+          <div className={styles.chatBtnInner}>
+            <MessageSquare size={20} />
+            {unreadCount > 0 && (
+              <span className={styles.unreadBadge}>{unreadCount}</span>
+            )}
+          </div>
+        </button>
 
         <button className={styles.controlBtnAction} title="Add Friend" onClick={handleAddFriend}>
           <UserPlus size={20} />
