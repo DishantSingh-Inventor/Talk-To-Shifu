@@ -30,6 +30,7 @@ export default function CallPage() {
   const [showReportMenu, setShowReportMenu] = useState(false);
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [showAd, setShowAd] = useState(false);
+  const [isAutoplayBlocked, setIsAutoplayBlocked] = useState(false);
 
   // States for device selection
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
@@ -178,22 +179,26 @@ export default function CallPage() {
 
   const setupWebRTC = useCallback(async (isUser1: boolean) => {
     console.log("Initializing RTCPeerConnection with STUN & TURN servers...");
-    const pc = new RTCPeerConnection({
-      iceServers: [
-        { urls: "stun:stun.l.google.com:19302" },
-        { urls: "stun:openrelay.metered.ca:80" },
-        {
-          urls: "turn:openrelay.metered.ca:80",
-          username: "openrelayproject",
-          credential: "openrelayproject",
-        },
-        {
-          urls: "turn:openrelay.metered.ca:443",
-          username: "openrelayproject",
-          credential: "openrelayproject",
-        },
-      ]
-    });
+    const turnUrl = process.env.NEXT_PUBLIC_TURN_URL;
+    const turnUsername = process.env.NEXT_PUBLIC_TURN_USERNAME;
+    const turnCredential = process.env.NEXT_PUBLIC_TURN_CREDENTIAL;
+
+    const iceServers: RTCIceServer[] = [
+      { urls: "stun:stun.l.google.com:19302" }
+    ];
+
+    if (turnUrl && turnUsername && turnCredential) {
+      console.log("Custom TURN server configured via environment variables.");
+      iceServers.push({
+        urls: turnUrl,
+        username: turnUsername,
+        credential: turnCredential
+      });
+    } else {
+      console.warn("No custom TURN server environment variables found. Defaulting to Google STUN only. (P2P will connect on local network/same device but may fail across different networks).");
+    }
+
+    const pc = new RTCPeerConnection({ iceServers });
 
     peerConnection.current = pc;
     setPcInstance(pc);
@@ -495,9 +500,31 @@ export default function CallPage() {
         console.log("Setting remote video srcObject");
         remoteVideoRef.current.srcObject = remoteStream;
       }
-      remoteVideoRef.current.play().catch(err => console.warn("Remote play blocked:", err));
+      remoteVideoRef.current.play()
+        .then(() => {
+          console.log("Remote stream playback started successfully.");
+          setIsAutoplayBlocked(false);
+        })
+        .catch(err => {
+          console.warn("Remote autoplay blocked by browser policy:", err);
+          setIsAutoplayBlocked(true);
+        });
     }
   }, [remoteStream, peerVideoOff]);
+
+  const handleUnblockAutoplay = () => {
+    if (remoteVideoRef.current) {
+      console.log("Attempting to programmatically unblock remote play via user gesture...");
+      remoteVideoRef.current.play()
+        .then(() => {
+          console.log("Remote playback unblocked successfully!");
+          setIsAutoplayBlocked(false);
+        })
+        .catch(err => {
+          console.error("Failed to unblock remote stream:", err);
+        });
+    }
+  };
 
   const toggleMute = () => {
     if (localStream && localStream.getAudioTracks().length > 0) {
@@ -651,7 +678,7 @@ export default function CallPage() {
       <div className={styles.videoGrid}>
         {/* Local Video Container */}
         <div className={`${styles.videoContainer} ${mySpeaking ? styles.speakingActive : ""}`}>
-          {myVideoOff ? (
+          {myVideoOff || !localStream || localStream.getVideoTracks().length === 0 ? (
             <div className={styles.avatarPlaceholderContainer}>
               <div className={`${styles.avatarBig} ${mySpeaking ? styles.speakingPulse : ""}`}>
                 {myDisplayName.substring(0, 2).toUpperCase()}
@@ -676,7 +703,7 @@ export default function CallPage() {
         
         {/* Stranger Video Container */}
         <div className={`${styles.videoContainer} ${peerSpeaking ? styles.speakingActive : ""}`}>
-          {peerVideoOff || !remoteStream ? (
+          {peerVideoOff || !remoteStream || remoteStream.getVideoTracks().length === 0 ? (
             <div className={styles.avatarPlaceholderContainer}>
               <div className={`${styles.avatarBig} ${peerSpeaking ? styles.speakingPulse : ""}`}>
                 {peerDisplayName.substring(0, 2).toUpperCase()}
@@ -690,7 +717,7 @@ export default function CallPage() {
               )}
               {(!remoteStream && match?.status === "waiting") && <p className={styles.placeholderText}>Finding someone...</p>}
               {(!remoteStream && match?.status === "connecting") && <p className={styles.placeholderText}>Found someone! Connecting call...</p>}
-              {(remoteStream && peerVideoOff) && <p className={styles.placeholderText}>Camera is turned off</p>}
+              {(remoteStream && (peerVideoOff || remoteStream.getVideoTracks().length === 0)) && <p className={styles.placeholderText}>Camera is turned off</p>}
             </div>
           ) : (
             <video ref={remoteVideoRef} autoPlay playsInline className={styles.video} />
@@ -701,6 +728,17 @@ export default function CallPage() {
           </div>
         </div>
       </div>
+
+      {isAutoplayBlocked && (
+        <div className={styles.autoplayOverlay} onClick={handleUnblockAutoplay}>
+          <div className={styles.autoplayCard}>
+            <Video size={48} className={styles.autoplayIcon} />
+            <h3>Tap to Join Call</h3>
+            <p>Your browser blocks media from autoplaying automatically without interaction.</p>
+            <button className={styles.autoplayBtn}>Click to Start</button>
+          </div>
+        </div>
+      )}
 
       {/* Manual Acceptance Overlay has been removed to skip and connect directly */}
 
