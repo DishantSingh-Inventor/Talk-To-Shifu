@@ -179,15 +179,15 @@ export default function CallPage() {
 
   const setupWebRTC = useCallback(async (isUser1: boolean) => {
     console.log("Initializing RTCPeerConnection with STUN & TURN servers...");
-    const turnUrl = process.env.NEXT_PUBLIC_TURN_URL;
-    const turnUsername = process.env.NEXT_PUBLIC_TURN_USERNAME;
-    const turnCredential = process.env.NEXT_PUBLIC_TURN_CREDENTIAL;
+    const turnUrl = process.env.NEXT_PUBLIC_TURN_URL || "global.relay.metered.ca";
+    const turnUsername = process.env.NEXT_PUBLIC_TURN_USERNAME || "b62a85eb17b26cab93732ced";
+    const turnCredential = process.env.NEXT_PUBLIC_TURN_CREDENTIAL || "7yfLHjK6mdNw0UMq";
 
     const iceServers: RTCIceServer[] = [
       { urls: "stun:stun.l.google.com:19302" }
     ];
 
-    if (turnUrl && turnUsername && turnCredential) {
+    if (turnUrl.includes(":") && (turnUrl.startsWith("turn:") || turnUrl.startsWith("turns:"))) {
       console.log("Custom TURN server configured via environment variables.");
       iceServers.push({
         urls: turnUrl,
@@ -195,7 +195,30 @@ export default function CallPage() {
         credential: turnCredential
       });
     } else {
-      console.warn("No custom TURN server environment variables found. Defaulting to Google STUN only. (P2P will connect on local network/same device but may fail across different networks).");
+      console.log("Defaulting to Metered global TURN relay servers.");
+      iceServers.push(
+        { urls: `stun:${turnUrl}:80` },
+        {
+          urls: `turn:${turnUrl}:80`,
+          username: turnUsername,
+          credential: turnCredential,
+        },
+        {
+          urls: `turn:${turnUrl}:443`,
+          username: turnUsername,
+          credential: turnCredential,
+        },
+        {
+          urls: `turn:${turnUrl}:443?transport=tcp`,
+          username: turnUsername,
+          credential: turnCredential,
+        },
+        {
+          urls: `turns:${turnUrl}:443?transport=tcp`,
+          username: turnUsername,
+          credential: turnCredential,
+        }
+      );
     }
 
     const pc = new RTCPeerConnection({ iceServers });
