@@ -394,27 +394,45 @@ export default function CallPage() {
     return () => clearInterval(interval);
   }, [match, profile, incrementCallTime, handleSkip, router]);
 
+  const candidatesRef = useRef<any[]>([]);
+
+  // Keep candidatesRef always containing the latest database query result
+  useEffect(() => {
+    if (candidates) {
+      candidatesRef.current = candidates;
+    }
+  }, [candidates]);
+
+  // Unified callback to process all candidates from our Ref
+  const processCandidates = useCallback(async () => {
+    if (!pcInstance || !profile) return;
+    const pc = pcInstance;
+    if (!pc.remoteDescription || !pc.remoteDescription.type) {
+      console.log("Skipping processCandidates: remoteDescription not set yet.");
+      return;
+    }
+
+    console.log("Processing pending ICE candidates. Current queue size:", candidatesRef.current.length);
+    for (const c of candidatesRef.current) {
+      if (c.senderId !== profile.userId && !addedCandidates.current.has(c._id)) {
+        try {
+          const candidateInit = JSON.parse(c.candidate);
+          console.log("Adding ICE candidate:", candidateInit.candidate);
+          await pc.addIceCandidate(new RTCIceCandidate(candidateInit));
+          addedCandidates.current.add(c._id);
+          console.log("Successfully added ICE candidate:", c._id);
+        } catch (e) {
+          console.warn("Failed to add ICE candidate:", e);
+        }
+      }
+    }
+  }, [pcInstance, profile]);
+
   // 3. Handle WebRTC Signaling (SDP offer/answer exchange)
   useEffect(() => {
     if (!match || !profile || !pcInstance) return;
     const isUser1 = match.user1 === profile.userId;
     const pc = pcInstance;
-
-    const addPendingCandidates = async () => {
-      if (!candidates) return;
-      for (const c of candidates) {
-        if (c.senderId !== profile.userId && !addedCandidates.current.has(c._id)) {
-          try {
-            const candidateInit = JSON.parse(c.candidate);
-            await pc.addIceCandidate(new RTCIceCandidate(candidateInit));
-            addedCandidates.current.add(c._id);
-            console.log("Successfully added pending ICE candidate:", c._id);
-          } catch (e) {
-            console.warn("Failed to add pending ICE candidate:", e);
-          }
-        }
-      }
-    };
 
     const handleSignaling = async () => {
       if (!isUser1 && match.sdpOffer && !sdpOfferProcessed.current) {
@@ -428,7 +446,7 @@ export default function CallPage() {
           console.log("User 2: Sending answer SDP...");
           await setSDP({ matchId: match._id, type: "answer", sdp: JSON.stringify(answer) });
           // Now that remote description is set, add any pending candidates immediately
-          await addPendingCandidates();
+          await processCandidates();
         } catch (err) {
           console.error("Error during User2 signaling setup:", err);
           sdpOfferProcessed.current = false;
@@ -441,7 +459,7 @@ export default function CallPage() {
           console.log("User 1: Setting remote answer SDP...");
           await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(match.sdpAnswer)));
           // Now that remote description is set, add any pending candidates immediately
-          await addPendingCandidates();
+          await processCandidates();
         } catch (err) {
           console.error("Error during User1 signaling setup:", err);
           sdpAnswerProcessed.current = false;
@@ -450,31 +468,14 @@ export default function CallPage() {
     };
 
     handleSignaling();
-  }, [match, profile, pcInstance, setSDP, candidates]);
+  }, [match, profile, pcInstance, setSDP, processCandidates]);
 
   // 4. Handle incoming ICE candidates continuously as they arrive
   useEffect(() => {
-    if (!candidates || !profile || !pcInstance) return;
-    const pc = pcInstance;
-
-    candidates.forEach(async (c) => {
-      if (c.senderId !== profile.userId && !addedCandidates.current.has(c._id)) {
-        if (pc.remoteDescription && pc.remoteDescription.type) {
-          try {
-            const candidateInit = JSON.parse(c.candidate);
-            console.log("Adding inline ICE candidate:", candidateInit.candidate);
-            await pc.addIceCandidate(new RTCIceCandidate(candidateInit));
-            addedCandidates.current.add(c._id);
-            console.log("Successfully added inline ICE candidate:", c._id);
-          } catch (e) {
-            console.warn("Failed to add inline ICE candidate:", e);
-          }
-        } else {
-          console.log("Skipping inline ICE candidate (remoteDescription not set yet):", c._id);
-        }
-      }
-    });
-  }, [candidates, profile, pcInstance]);
+    if (candidates && pcInstance && pcInstance.remoteDescription && pcInstance.remoteDescription.type) {
+      processCandidates();
+    }
+  }, [candidates, pcInstance, processCandidates]);
 
   // 5. Synchronize local video element srcObject with fallback/programmatic play
   useEffect(() => {
