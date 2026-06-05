@@ -27,6 +27,7 @@ export default function CallPage() {
 
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const [remoteTrackCount, setRemoteTrackCount] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [showReportMenu, setShowReportMenu] = useState(false);
@@ -290,18 +291,17 @@ export default function CallPage() {
     pc.ontrack = (event) => {
       console.log("Remote track received:", event.track.kind, "Streams:", event.streams.map(s => s.id));
       if (event.streams && event.streams[0]) {
-        console.log("Setting remote stream from event.streams[0] (wrapping in a new MediaStream instance to trigger React state updates)...");
-        // Always wrap in a new MediaStream instance so the reference changes and React updates the video source
-        setRemoteStream(new MediaStream(event.streams[0].getTracks()));
+        console.log("Setting remote stream from event.streams[0] directly (avoiding new MediaStream constructor to support Safari/macOS)...");
+        setRemoteStream(event.streams[0]);
       } else {
         console.log("No streams found on event, reconstructing remoteMediaStream...");
         if (!remoteMediaStream.current) {
           remoteMediaStream.current = new MediaStream();
         }
         remoteMediaStream.current.addTrack(event.track);
-        // Force React state update with a new MediaStream reference so UI re-renders
-        setRemoteStream(new MediaStream(remoteMediaStream.current.getTracks()));
+        setRemoteStream(remoteMediaStream.current);
       }
+      setRemoteTrackCount(prev => prev + 1);
     };
 
     pc.onicecandidate = (event) => {
@@ -318,6 +318,10 @@ export default function CallPage() {
       if (pc.iceConnectionState === "failed") {
         console.warn("ICE connection failed! This usually means NAT traversal failed and a TURN server is required.");
       }
+    };
+
+    pc.onicecandidateerror = (event: any) => {
+      console.warn("ICE candidate error:", event.errorCode, event.errorText, event.url);
     };
 
     pc.onconnectionstatechange = () => {
@@ -518,7 +522,7 @@ export default function CallPage() {
         try {
           const candidateInit = JSON.parse(c.candidate);
           console.log("Adding ICE candidate:", candidateInit.candidate);
-          await pc.addIceCandidate(new RTCIceCandidate(candidateInit));
+          await pc.addIceCandidate(candidateInit);
           addedCandidates.current.add(c._id);
           console.log("Successfully added ICE candidate:", c._id);
         } catch (e) {
@@ -539,7 +543,7 @@ export default function CallPage() {
         try {
           sdpOfferProcessed.current = true;
           console.log("User 2: Setting remote offer SDP...");
-          await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(match.sdpOffer)));
+          await pc.setRemoteDescription(JSON.parse(match.sdpOffer));
           console.log("User 2: Creating local answer SDP...");
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
@@ -557,7 +561,7 @@ export default function CallPage() {
         try {
           sdpAnswerProcessed.current = true;
           console.log("User 1: Setting remote answer SDP...");
-          await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(match.sdpAnswer)));
+          await pc.setRemoteDescription(JSON.parse(match.sdpAnswer));
           // Now that remote description is set, add any pending candidates immediately
           await processCandidates();
         } catch (err) {
@@ -592,7 +596,7 @@ export default function CallPage() {
   useEffect(() => {
     if (remoteVideoRef.current && remoteStream) {
       if (remoteVideoRef.current.srcObject !== remoteStream) {
-        console.log("Setting remote video srcObject");
+        console.log("Setting remote video srcObject to original stream");
         remoteVideoRef.current.srcObject = remoteStream;
       }
       remoteVideoRef.current.play()
@@ -605,7 +609,7 @@ export default function CallPage() {
           setIsAutoplayBlocked(true);
         });
     }
-  }, [remoteStream, peerVideoOff]);
+  }, [remoteStream, remoteTrackCount, peerVideoOff]);
 
   // 7. Save bandwidth dynamically by pausing/disabling video tracks when the tab is hidden
   useEffect(() => {
